@@ -6,7 +6,7 @@ Plataforma web para gestionar tu vida personal en un solo sitio: **proyectos y t
 - **Proyectos**: tablero con columnas Pendiente → En curso → Hecha, prioridades, fechas límite y progreso por proyecto.
 - **Hábitos y salud**: cuadrícula semanal con rachas 🔥, registro diario de sueño, energía, ejercicio y peso, y gráficos de 14 días.
 - **Objetivos**: metas anuales y trimestrales con progreso, y plantilla de revisión semanal (logros, dificultades, aprendizajes, foco).
-- **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos. **Movimientos periódicos** (suscripciones, alquiler, nómina) que se apuntan solos cada semana, mes o año. **Importa movimientos** desde el CSV de Trade Republic o de cualquier banco (ver abajo).
+- **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos. **Movimientos periódicos** (suscripciones, alquiler, nómina) que se apuntan solos cada semana, mes o año. **Importa movimientos bancarios** desde el export de tu banco (por ahora, Trade Republic; ver abajo).
 - **Asistente de IA** 💬: un chat (con Claude) al que le cuentas lo que has hecho —«hoy he corrido 30 minutos y me he gastado 12 € en el almuerzo»— y lo registra en tu panel; también responde preguntas sobre tus datos.
 
 Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objetivos de ejemplo, todo editable.
@@ -61,15 +61,15 @@ Abre http://localhost:5173, crea una cuenta y listo.
 
 Netlify o Cloudflare Pages funcionan igual: comando de build `npm run build`, carpeta `dist`.
 
-## Importar movimientos (CSV)
+## Importar movimientos bancarios
 
-En **Finanzas → Importar** se sube un CSV; se lee en el navegador y no se guarda nada hasta confirmar.
+En **Finanzas → Importación movimientos bancarios** se elige el banco y se sube el archivo que exporta; se lee en el navegador y no se guarda nada hasta confirmar.
 
-- **Trade Republic** se reconoce por su cabecera (export oficial de transacciones). La compraventa de valores viene desmarcada (no es gasto ni ingreso).
+- **Bancos**: el selector solo ofrece los bancos integrados, cada uno con su logo y sus instrucciones para exportar. Por ahora, **Trade Republic** (export oficial de transacciones en CSV). Si el archivo no es del banco elegido, se avisa. La lista no la puede ampliar el usuario: cada banco se añade en el código (ver *Personalizar*).
+- **Trade Republic**: la compraventa de valores viene desmarcada (no es gasto ni ingreso).
 - **Agrupaciones**: la vista previa muestra los movimientos en desplegables **por tipo** de operación, **por mes y tipo** o **sin agrupar** (se recuerda la última elegida). Cada grupo tiene su casilla para incluirlo o excluirlo entero, y dentro se sigue pudiendo marcar o desmarcar cada movimiento.
-- **Otros bancos**: se adivinan las columnas de fecha, importe y descripción por su nombre y se pueden corregir; hay opción de invertir el signo para bancos que exportan los gastos en positivo. Entiende «1.234,56», «-12.50», fechas DD/MM/AAAA, etc.
 - **Categorías propuestas**: primero tus reglas («si el comercio contiene X → categoría Y»), después el **código MCC** del pago con tarjeta (5411 supermercado, 5812 restaurante, 4899 suscripciones…). Si cambias la categoría de un comercio en la vista previa, se aplica a todos sus movimientos y se recuerda para la próxima importación.
-- **Sin duplicados**: cada movimiento importado guarda su origen y su identificador (`transaction_id` en Trade Republic; en otros bancos, fecha + importe + texto). Reimportar el mismo archivo salta lo ya guardado; lo garantiza una restricción única en la base de datos (migración 004).
+- **Sin duplicados**: cada movimiento importado guarda su origen (el banco) y su identificador (`transaction_id` en Trade Republic). Reimportar el mismo archivo salta lo ya guardado; lo garantiza una restricción única en la base de datos (migración 004).
 
 ## Movimientos periódicos
 
@@ -144,7 +144,8 @@ npm run build           # build de producción en dist/
 src/
   backend/        Contrato común + implementación Supabase y modo demo (localStorage)
   components/     UI compartida, acceso, avisos y chat del asistente
-  lib/            Tipos, valores por defecto, utilidades y hooks de datos
+  assets/banks/   Logos de los bancos del importador
+  lib/            Tipos, valores por defecto, utilidades, hooks de datos, importador y bancos (banks.ts)
   pages/          Inicio, Proyectos, Hábitos, Objetivos, Finanzas
 supabase/
   migrations/
@@ -169,4 +170,5 @@ tests/
 ## Personalizar
 
 - **Hábitos, categorías y presupuestos con los que empieza cada cuenta**: `src/lib/defaults.ts` (modo demo) y, para Supabase, `create_default_finance_categories()` y `seed_new_user()` en una migración nueva. Cada usuario puede después cambiar sus categorías desde Finanzas → Categorías.
+- **Añadir un banco al importador**: escribe su lector en `src/lib/importer.ts` (reconocer la cabecera y convertir cada fila; `readGeneric()` ya resuelve columnas de fecha, importe y texto), pon su logo en `src/assets/banks/` y añádelo a `BANKS` en `src/lib/banks.ts` con sus instrucciones. Su `id` queda guardado como origen de los movimientos importados, así que no se cambia una vez publicado.
 - **Tema**: los colores están como variables CSS al principio de `src/styles.css`, con versión clara y oscura (sigue el tema del sistema).

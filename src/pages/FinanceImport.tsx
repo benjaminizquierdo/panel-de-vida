@@ -1,33 +1,30 @@
 import { useMemo, useState, type ChangeEvent } from 'react';
 import { backend } from '../backend';
-import { Card, Empty } from '../components/ui';
+import IconSelect from '../components/IconSelect';
+import { Card } from '../components/ui';
+import { BANKS, bankById, type Bank, type BankId } from '../lib/banks';
 import { categoryOptions } from '../lib/categories';
 import { parseCsv } from '../lib/csv';
 import { notifyDataChanged } from '../lib/events';
-import {
-  groupLabel,
-  guessMapping,
-  isTradeRepublic,
-  normalizeMerchant,
-  readGeneric,
-  readTradeRepublic,
-  suggestCategory,
-  txType,
-  type ImportRow,
-  type Mapping,
-  type ReadResult,
-} from '../lib/importer';
+import { normalizeMerchant, suggestCategory, txType, type ImportRow, type ReadResult } from '../lib/importer';
 import { toast } from '../lib/toast';
 import type { FinanceCategory, NewRow, Transaction, TxType } from '../lib/types';
 import { useTable } from '../lib/useTable';
 import { eur, fmtDate, fmtMonth, monthKey } from '../lib/utils';
 
-type Source = 'trade_republic' | 'csv';
+type Step = { kind: 'file' } | { kind: 'preview'; fileName: string; source: BankId; result: ReadResult };
 
-type Step =
-  | { kind: 'file' }
-  | { kind: 'mapping'; fileName: string; table: string[][]; mapping: Mapping }
-  | { kind: 'preview'; fileName: string; source: Source; result: ReadResult };
+const BANK_KEY = 'pv:import-bank';
+
+const savedBank = (): Bank => {
+  try {
+    return bankById(localStorage.getItem(BANK_KEY)) ?? BANKS[0];
+  } catch {
+    return BANKS[0];
+  }
+};
+
+const bankLogo = (bank: Bank) => <img src={bank.logo} alt="" className="bank-logo" width={24} height={24} />;
 
 export default function FinanceImport({ categories, transactions, onDone }: {
   categories: FinanceCategory[];
@@ -35,7 +32,20 @@ export default function FinanceImport({ categories, transactions, onDone }: {
   onDone: () => void;
 }) {
   const [step, setStep] = useState<Step>({ kind: 'file' });
+  const [bank, setBankState] = useState<Bank>(savedBank);
   const [error, setError] = useState<string | null>(null);
+
+  const setBank = (id: string) => {
+    const next = bankById(id);
+    if (!next) return;
+    setBankState(next);
+    setError(null);
+    try {
+      localStorage.setItem(BANK_KEY, next.id);
+    } catch {
+      // sin almacenamiento (modo privado): solo no se recuerda
+    }
+  };
 
   const openFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,28 +55,19 @@ export default function FinanceImport({ categories, transactions, onDone }: {
     try {
       const table = parseCsv(await file.text());
       if (table.length < 2) throw new Error('El archivo no tiene movimientos.');
-      if (isTradeRepublic(table[0])) {
-        setStep({ kind: 'preview', fileName: file.name, source: 'trade_republic', result: readTradeRepublic(table) });
-      } else {
-        setStep({ kind: 'mapping', fileName: file.name, table, mapping: guessMapping(table[0]) });
+      if (!bank.matches(table[0])) {
+        const other = BANKS.find((b) => b.matches(table[0]));
+        throw new Error(
+          other
+            ? `Este archivo es de ${other.name}, no de ${bank.name}. Elige ${other.name} en el selector de banco.`
+            : `Este archivo no parece un export de ${bank.name}. Comprueba que es el CSV de transacciones que descarga la app del banco.`,
+        );
       }
+      setStep({ kind: 'preview', fileName: file.name, source: bank.id, result: bank.read(table) });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se ha podido leer el archivo.');
     }
   };
-
-  if (step.kind === 'mapping') {
-    return (
-      <MappingStep
-        step={step}
-        onBack={() => setStep({ kind: 'file' })}
-        onChange={(mapping) => setStep({ ...step, mapping })}
-        onContinue={() =>
-          setStep({ kind: 'preview', fileName: step.fileName, source: 'csv', result: readGeneric(step.table, step.mapping) })
-        }
-      />
-    );
-  }
 
   if (step.kind === 'preview') {
     return (
@@ -83,17 +84,20 @@ export default function FinanceImport({ categories, transactions, onDone }: {
 
   return (
     <div className="stack">
-      <Card title="Importar movimientos">
-        <p>
-          Sube el CSV de tu banco. El de <strong>Trade Republic</strong> se reconoce solo; con otros bancos podrás indicar qué
-          columna es cada cosa. Antes de guardar verás todos los movimientos para revisarlos.
-        </p>
+      <Card title="Importar movimientos bancarios">
+        <p>Elige tu banco y sube el archivo de movimientos que exporta. Antes de guardar verás todos los movimientos para revisarlos.</p>
+        <IconSelect
+          label="Banco"
+          options={BANKS.map((b) => ({ value: b.id, label: b.name, icon: bankLogo(b) }))}
+          value={bank.id}
+          onChange={setBank}
+        />
         <label className="file-drop">
           <input type="file" accept=".csv,text/csv" onChange={(e) => void openFile(e)} />
           <span className="file-drop-icon" aria-hidden>
             📄
           </span>
-          <strong>Elegir archivo CSV</strong>
+          <strong>Elegir archivo CSV de {bank.name}</strong>
           <span className="muted small">Se lee en tu navegador; solo se guardan los movimientos que confirmes.</span>
         </label>
         {error && (
@@ -102,97 +106,19 @@ export default function FinanceImport({ categories, transactions, onDone }: {
           </p>
         )}
       </Card>
-      <Card title="Cómo exportar desde Trade Republic">
+      <Card title={`Cómo exportar desde ${bank.name}`}>
         <ol className="steps">
-          <li>En la app de Trade Republic, abre tu perfil y busca la opción de exportar transacciones (en algunas versiones está en Documentos o Extractos).</li>
-          <li>Elige el periodo y el formato CSV, y guárdalo en tu dispositivo.</li>
-          <li>Súbelo aquí. Si lo vuelves a importar más adelante, los movimientos ya guardados se detectan y se saltan.</li>
+          {bank.howTo.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
         </ol>
-        <p className="muted small">Consejo: no abras y guardes el CSV con Excel antes de importarlo; puede cambiar el formato de fechas e importes.</p>
+        {bank.tip && <p className="muted small">Consejo: {bank.tip}</p>}
       </Card>
     </div>
   );
 }
 
-// ---------------------------------------------------------------- Paso 2: columnas (otros bancos)
-
-function MappingStep({ step, onBack, onChange, onContinue }: {
-  step: Extract<Step, { kind: 'mapping' }>;
-  onBack: () => void;
-  onChange: (m: Mapping) => void;
-  onContinue: () => void;
-}) {
-  const { table, mapping } = step;
-  const header = table[0];
-  const sample = readGeneric(table.slice(0, 6), mapping);
-  const ready = mapping.date >= 0 && mapping.amount >= 0 && mapping.description >= 0;
-
-  const select = (key: 'date' | 'amount' | 'description' | 'id', label: string, optional = false) => (
-    <label className="field">
-      <span>{label}</span>
-      <select value={mapping[key]} onChange={(e) => onChange({ ...mapping, [key]: Number(e.target.value) })}>
-        <option value={-1}>{optional ? '— No tiene' : '— Elige una columna'}</option>
-        {header.map((h, i) => (
-          <option key={i} value={i}>
-            {h || `Columna ${i + 1}`}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-
-  return (
-    <Card title={`Columnas de «${step.fileName}»`}>
-      <p className="muted">No es un CSV de Trade Republic. Indica qué columna es cada cosa (las he adivinado por el nombre):</p>
-      <div className="field-row">
-        {select('date', 'Fecha')}
-        {select('amount', 'Importe')}
-      </div>
-      <div className="field-row">
-        {select('description', 'Descripción')}
-        {select('id', 'Identificador (opcional)', true)}
-      </div>
-      <label className="check small">
-        <input type="checkbox" checked={mapping.invert} onChange={(e) => onChange({ ...mapping, invert: e.target.checked })} />
-        Mi banco pone los gastos en positivo (invertir signo)
-      </label>
-
-      <div className="stack">
-        <strong className="small">Así se leerán las primeras filas:</strong>
-        {!ready ? (
-          <Empty>Elige al menos fecha, importe y descripción.</Empty>
-        ) : (
-          <ul className="list">
-            {sample.rows.map((r) => (
-              <li key={r.key}>
-                <span>
-                  <span className="muted small">{fmtDate(r.date)}</span> {r.text}
-                </span>
-                <span className={`tx-amount ${txType(r)}`}>{eur(r.amount)}</span>
-              </li>
-            ))}
-            {sample.errors.map((e) => (
-              <li key={e} className="text-danger small">
-                {e}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="row between">
-        <button className="btn ghost" onClick={onBack}>
-          ← Otro archivo
-        </button>
-        <button className="btn primary" disabled={!ready} onClick={onContinue}>
-          Continuar
-        </button>
-      </div>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------- Paso 3: vista previa
+// ---------------------------------------------------------------- Vista previa
 
 const merchantKey = (row: ImportRow) => `${txType(row)}|${normalizeMerchant(row.merchant)}`;
 
@@ -257,6 +183,7 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
   onDone: () => void;
 }) {
   const { source, result } = step;
+  const bank = bankById(source) ?? BANKS[0];
   const rules = useTable('import_rules');
 
   const existing = useMemo(
@@ -302,8 +229,8 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
   };
   const [open, setOpen] = useState<Set<string>>(new Set());
   const groups = useMemo(
-    () => groupRows(rows, grouping, source === 'trade_republic' ? groupLabel : (group) => group),
-    [rows, grouping, source],
+    () => groupRows(rows, grouping, bank.groupLabel ?? ((group) => group)),
+    [rows, grouping, bank],
   );
   const allGroupIds = groups.flatMap((g) => [g.id, ...(g.children ?? []).map((c) => c.id)]);
   const allOpen = allGroupIds.length > 0 && allGroupIds.every((id) => open.has(id));
@@ -405,7 +332,7 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
           <strong>{r.text}</strong>
           <span className="muted small">
             {fmtDate(r.date)}
-            {showGroup && source === 'trade_republic' && ` · ${groupLabel(r.group)}`}
+            {showGroup && bank.groupLabel && ` · ${bank.groupLabel(r.group)}`}
             {dup && ' · ya importado'}
           </span>
         </span>
@@ -476,7 +403,11 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
   return (
     <div className="stack">
       <Card
-        title={`Revisar «${step.fileName}»`}
+        title={
+          <span className="row">
+            {bankLogo(bank)} Revisar «{step.fileName}»
+          </span>
+        }
         action={
           <button className="btn ghost sm" onClick={onBack}>
             ← Otro archivo
@@ -484,8 +415,7 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
         }
       >
         <p className="muted small">
-          {source === 'trade_republic' ? 'Formato de Trade Republic detectado. ' : ''}
-          {rows.length} movimientos leídos
+          Formato de {bank.name} detectado. {rows.length} movimientos leídos
           {duplicates > 0 && ` · ${duplicates} ya importados antes (se saltan)`}
           {result.errors.length > 0 && ` · ${result.errors.length} filas no se han podido leer`}
         </p>

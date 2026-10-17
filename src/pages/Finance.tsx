@@ -18,7 +18,7 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
   { id: 'periodicos', label: 'Periódicos' },
   { id: 'categorias', label: 'Categorías' },
-  { id: 'importar', label: 'Importar' },
+  { id: 'importar', label: 'Importación movimientos bancarios' },
 ];
 
 export default function Finance() {

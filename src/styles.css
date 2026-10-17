@@ -1192,7 +1192,14 @@ select.sm {
 /* ---------- Categorías de finanzas ---------- */
 
 .page-switch {
+  flex-wrap: wrap;
   min-width: 220px;
+}
+
+/* Cada pestaña en una línea; si no caben todas, las que sobran bajan a otra fila y la ocupan entera. */
+.page-switch button {
+  flex: 1 1 auto;
+  white-space: nowrap;
 }
 
 .month-nav {
@@ -1471,6 +1478,83 @@ select.sm {
 
 .subpanel .segmented {
   background: var(--surface);
+}
+
+/* ---------- Desplegable con iconos (selector de banco) ---------- */
+
+.icon-select {
+  position: relative;
+}
+
+.icon-select-button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-align: left;
+}
+
+.icon-select-icon {
+  display: flex;
+  flex: none;
+}
+
+.icon-select-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.icon-select-caret {
+  color: var(--muted);
+}
+
+.icon-select-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 30;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.14);
+}
+
+.icon-select-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.icon-select-list li.is-active {
+  background: var(--surface-2);
+}
+
+.icon-select-check {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.bank-logo {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--border);
 }
 
 /* ---------- Importación: agrupaciones desplegables ---------- */
