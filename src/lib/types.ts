@@ -64,16 +64,27 @@ export interface Review extends Base {
   next_focus: string;
 }
 
+export interface FinanceCategory extends Base {
+  /** null en las categorías de primer nivel; solo hay dos niveles. */
+  parent_id: string | null;
+  type: TxType;
+  name: string;
+  icon: string;
+  color: string;
+  sort_order: number;
+  archived: boolean;
+}
+
 export interface Transaction extends Base {
   date: string;
   type: TxType;
   amount: number;
-  category: string;
+  category_id: string;
   note: string;
 }
 
 export interface Budget extends Base {
-  category: string;
+  category_id: string;
   monthly_limit: number;
 }
 
@@ -83,8 +94,9 @@ export interface Highlight extends Base {
   done: boolean;
 }
 
-/** Cada clave es el nombre de una tabla de Supabase (ver supabase/schema.sql). */
+/** Cada clave es el nombre de una tabla de Supabase (ver supabase/migrations). */
 export interface Tables {
+  finance_categories: FinanceCategory;
   projects: Project;
   tasks: Task;
   habits: Habit;

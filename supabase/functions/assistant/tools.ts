@@ -5,10 +5,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-// Mantener sincronizado con src/lib/defaults.ts.
-export const EXPENSE_CATEGORIES = ['Vivienda', 'Comida', 'Transporte', 'Ocio', 'Salud', 'Suscripciones', 'Ropa', 'Otros'];
-export const INCOME_CATEGORIES = ['Nómina', 'Freelance', 'Regalos', 'Otros ingresos'];
-
 export interface ToolContext {
   db: SupabaseClient;
   userId: string;
@@ -43,13 +39,13 @@ const object = (properties: Record<string, Schema>): Anthropic.Beta.BetaTool.Inp
 });
 
 const QUERYABLE = {
-  movimientos: { table: 'transactions', columns: 'date, type, amount, category, note', dateColumn: 'date' },
+  movimientos: { table: 'transactions', columns: 'date, type, amount, category_id, note', dateColumn: 'date' },
   habitos_cumplidos: { table: 'habit_logs', columns: 'habit_id, date', dateColumn: 'date' },
   salud: { table: 'health_logs', columns: 'date, sleep_hours, energy, exercise_minutes, weight, notes', dateColumn: 'date' },
   tareas: { table: 'tasks', columns: 'id, title, status, priority, due_date, project_id', dateColumn: 'due_date' },
   proyectos: { table: 'projects', columns: 'id, name, description, status', dateColumn: null },
   objetivos: { table: 'goals', columns: 'id, title, horizon, area, current, target, unit, due_date', dateColumn: null },
-  presupuestos: { table: 'budgets', columns: 'category, monthly_limit', dateColumn: null },
+  presupuestos: { table: 'budgets', columns: 'category_id, monthly_limit', dateColumn: null },
   destacados: { table: 'highlights', columns: 'date, text, done', dateColumn: 'date' },
   revisiones: { table: 'reviews', columns: 'week_start, wins, challenges, lessons, next_focus', dateColumn: 'week_start' },
 } as const;
@@ -64,9 +60,21 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
     input_schema: object({
       tipo: oneOf(['gasto', 'ingreso'], 'Gasto o ingreso'),
       importe: num('Importe en euros, mayor que 0'),
-      categoria: oneOf([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES], 'Categoría: de gasto para gastos, de ingreso para ingresos'),
+      categoria_id: str('id de la categoría o subcategoría del contexto (la más específica que encaje), del mismo tipo que el movimiento'),
       nota: str('Descripción breve (p. ej. «cena con amigos»); cadena vacía si no hay'),
       fecha: date('Día del movimiento'),
+    }),
+  },
+  {
+    name: 'crear_categoria',
+    description:
+      'Crea una categoría de gastos o ingresos, o una subcategoría dentro de una categoría principal del contexto. Úsala cuando el usuario lo pida o cuando ninguna categoría existente encaje y el usuario lo acepte.',
+    strict: true,
+    input_schema: object({
+      tipo: oneOf(['gasto', 'ingreso'], 'Tipo de la categoría'),
+      nombre: str('Nombre de la categoría'),
+      icono: str('Un emoji que la represente'),
+      categoria_padre_id: optText('id de la categoría principal de la que cuelga (vacío si es una categoría principal)'),
     }),
   },
   {
@@ -221,19 +229,74 @@ const findOwn = async (ctx: ToolContext, table: string, id: unknown, columns: st
   return row as unknown as Record<string, unknown>;
 };
 
+interface CategoryRow {
+  id: string;
+  parent_id: string | null;
+  type: string;
+  name: string;
+  icon: string;
+  color: string;
+  archived: boolean;
+}
+
+/** Todas las categorías del usuario, indexadas por id, y cómo nombrarlas («Comida › Supermercado»). */
+const loadCategories = async (ctx: ToolContext) => {
+  const rows = (check(await ctx.db.from('finance_categories').select('id, parent_id, type, name, icon, color, archived')) ?? []) as CategoryRow[];
+  const byId = new Map(rows.map((c) => [c.id, c]));
+  const path = (id: unknown) => {
+    const cat = byId.get(String(id));
+    if (!cat) return 'Sin categoría';
+    const parent = cat.parent_id ? byId.get(cat.parent_id) : undefined;
+    return parent ? `${parent.name} › ${cat.name}` : cat.name;
+  };
+  const top = (id: unknown) => {
+    const cat = byId.get(String(id));
+    return cat?.parent_id ? (byId.get(cat.parent_id)?.name ?? cat.name) : (cat?.name ?? 'Sin categoría');
+  };
+  return { byId, path, top };
+};
+
 // ---------------------------------------------------------------- Ejecución
 
 const handlers: Record<string, (input: Input, ctx: ToolContext) => Promise<unknown>> = {
   async registrar_movimiento(input, ctx) {
     const type = input.tipo === 'ingreso' ? 'ingreso' : 'gasto';
-    const allowed = type === 'gasto' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-    const category = allowed.includes(input.categoria as string) ? (input.categoria as string) : allowed[allowed.length - 1];
     const amount = Math.round(positive(input.importe, 'importe') * 100) / 100;
     const day = optionalDate(input.fecha, 'fecha') ?? ctx.today;
     const note = typeof input.nota === 'string' ? input.nota.trim() : '';
-    check(await ctx.db.from('transactions').insert({ type, amount, category, note, date: day }));
-    ctx.actions.push(`${type === 'gasto' ? 'Gasto' : 'Ingreso'} de ${eur(amount)} en ${category}${note ? ` (${note})` : ''} · ${dayLabel(day, ctx.today)}`);
-    return { guardado: true, tipo: type, importe: amount, categoria: category, fecha: day };
+    const { byId, path } = await loadCategories(ctx);
+    const category = byId.get(text(input.categoria_id, 'categoria_id'));
+    if (!category) throw new Error('No existe esa categoría. Usa un id de las categorías del contexto.');
+    if (category.type !== type) {
+      throw new Error(`«${category.name}» es una categoría de ${category.type === 'gasto' ? 'gastos' : 'ingresos'}; elige una de ${type === 'gasto' ? 'gastos' : 'ingresos'}.`);
+    }
+    if (category.archived) throw new Error(`«${category.name}» está archivada; elige otra categoría.`);
+    check(await ctx.db.from('transactions').insert({ type, amount, category_id: category.id, note, date: day }));
+    const label = path(category.id);
+    ctx.actions.push(`${type === 'gasto' ? 'Gasto' : 'Ingreso'} de ${eur(amount)} en ${label}${note ? ` (${note})` : ''} · ${dayLabel(day, ctx.today)}`);
+    return { guardado: true, tipo: type, importe: amount, categoria: label, fecha: day };
+  },
+
+  async crear_categoria(input, ctx) {
+    const type = input.tipo === 'ingreso' ? 'ingreso' : 'gasto';
+    const name = text(input.nombre, 'nombre');
+    const icon = typeof input.icono === 'string' && input.icono.trim() ? input.icono.trim().slice(0, 8) : '🏷️';
+    let parent: CategoryRow | undefined;
+    if (input.categoria_padre_id) {
+      parent = (await loadCategories(ctx)).byId.get(String(input.categoria_padre_id));
+      if (!parent) throw new Error('No existe esa categoría principal. Usa un id del contexto.');
+      if (parent.parent_id) throw new Error('Solo hay dos niveles: la categoría padre debe ser una categoría principal.');
+      if (parent.type !== type) throw new Error(`«${parent.name}» es de ${parent.type === 'gasto' ? 'gastos' : 'ingresos'}; la subcategoría debe ser del mismo tipo.`);
+    }
+    const id = createdId(
+      await ctx.db
+        .from('finance_categories')
+        .insert({ type, name, icon, color: parent?.color ?? '#64748b', parent_id: parent?.id ?? null, sort_order: 100 })
+        .select('id')
+        .single(),
+    );
+    ctx.actions.push(`Categoría creada: ${icon} ${parent ? `${parent.name} › ` : ''}${name}`);
+    return { guardado: true, id, nombre: name, tipo: type };
   },
 
   async marcar_habito(input, ctx) {
@@ -403,21 +466,38 @@ const handlers: Record<string, (input: Input, ctx: ToolContext) => Promise<unkno
     const rows = (check(await query) ?? []) as unknown as Record<string, unknown>[];
 
     if (name === 'movimientos') {
-      const totals = { ingresos: 0, gastos: 0, gastos_por_categoria: {} as Record<string, number> };
+      const { path, top } = await loadCategories(ctx);
+      // Por categoría principal (sumando sus subcategorías) y por categoría exacta.
+      const totals = {
+        ingresos: 0,
+        gastos: 0,
+        gastos_por_categoria: {} as Record<string, number>,
+        gastos_por_subcategoria: {} as Record<string, number>,
+      };
       for (const r of rows) {
         const amount = Number(r.amount);
         if (r.type === 'ingreso') totals.ingresos += amount;
         else {
           totals.gastos += amount;
-          const cat = String(r.category);
-          totals.gastos_por_categoria[cat] = (totals.gastos_por_categoria[cat] ?? 0) + amount;
+          const main = top(r.category_id);
+          const exact = path(r.category_id);
+          totals.gastos_por_categoria[main] = (totals.gastos_por_categoria[main] ?? 0) + amount;
+          if (exact !== main) totals.gastos_por_subcategoria[exact] = (totals.gastos_por_subcategoria[exact] ?? 0) + amount;
         }
       }
       const round = (n: number) => Math.round(n * 100) / 100;
       totals.ingresos = round(totals.ingresos);
       totals.gastos = round(totals.gastos);
-      for (const k of Object.keys(totals.gastos_por_categoria)) totals.gastos_por_categoria[k] = round(totals.gastos_por_categoria[k]);
-      return { filas: rows, total_filas: rows.length, resumen: totals };
+      for (const group of [totals.gastos_por_categoria, totals.gastos_por_subcategoria]) {
+        for (const k of Object.keys(group)) group[k] = round(group[k]);
+      }
+      const filas = rows.map((r) => ({ fecha: r.date, tipo: r.type, importe: Number(r.amount), categoria: path(r.category_id), nota: r.note }));
+      return { filas, total_filas: rows.length, resumen: totals };
+    }
+
+    if (name === 'presupuestos') {
+      const { path } = await loadCategories(ctx);
+      return { filas: rows.map((r) => ({ categoria: path(r.category_id), limite_mensual: Number(r.monthly_limit) })), total_filas: rows.length };
     }
 
     if (name === 'habitos_cumplidos') {

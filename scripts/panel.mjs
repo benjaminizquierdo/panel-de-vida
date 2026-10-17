@@ -9,7 +9,7 @@
 //   add <tabla> '<json>'             Inserta una fila
 //   update <tabla> <id> '<json>'     Modifica una fila
 //   delete <tabla> <id>              Elimina una fila
-//   gasto <importe> <categoría> [nota…] [--fecha AAAA-MM-DD]
+//   gasto <importe> <categoría> [nota…] [--fecha AAAA-MM-DD]     (categoría o subcategoría, por nombre)
 //   ingreso <importe> <categoría> [nota…] [--fecha AAAA-MM-DD]
 //   habito <nombre o parte> [--fecha AAAA-MM-DD]    Marca un hábito como hecho
 //   salud '<json>' [--fecha AAAA-MM-DD]             sleep_hours, energy (1-5), exercise_minutes, weight, notes
@@ -18,13 +18,13 @@
 //   resumen                                         Resumen del día y del mes
 //
 // Tablas: projects, tasks, habits, habit_logs, health_logs, goals, reviews,
-//         highlights, transactions, budgets
+//         highlights, transactions, budgets, finance_categories
 
 import { createClient } from '@supabase/supabase-js';
 
 const TABLES = [
   'projects', 'tasks', 'habits', 'habit_logs', 'health_logs',
-  'goals', 'reviews', 'highlights', 'transactions', 'budgets',
+  'goals', 'reviews', 'highlights', 'transactions', 'budgets', 'finance_categories',
 ];
 
 const { VITE_SUPABASE_URL: url, VITE_SUPABASE_ANON_KEY: key, PANEL_EMAIL: email, PANEL_PASSWORD: password } = process.env;
@@ -124,9 +124,11 @@ const commands = {
   },
 
   async movimiento(type) {
-    const [importe, category, ...note] = args;
-    if (!importe || !category) die(`uso: ${type} <importe> <categoría> [nota]`);
-    const row = { type, amount: amount(importe), category, note: note.join(' '), date: day };
+    const [importe, categoryName, ...note] = args;
+    if (!importe || !categoryName) die(`uso: ${type} <importe> <categoría> [nota]`);
+    const categories = check(await sb.from('finance_categories').select('id, name').eq('type', type).eq('archived', false));
+    const category = findByName(categories, 'name', categoryName, 'la categoría');
+    const row = { type, amount: amount(importe), category_id: category.id, note: note.join(' '), date: day };
     print(check(await sb.from('transactions').insert(row).select().single()));
   },
 
@@ -172,7 +174,7 @@ const commands = {
       sb.from('habits').select('id, name').eq('active', true).then(check),
       sb.from('habit_logs').select('habit_id').eq('date', day).then(check),
       sb.from('tasks').select('title, status, due_date').neq('status', 'hecha').then(check),
-      sb.from('transactions').select('type, amount, category').gte('date', `${month}-01`).lt('date', nextMonth).then(check),
+      sb.from('transactions').select('type, amount').gte('date', `${month}-01`).lt('date', nextMonth).then(check),
       sb.from('budgets').select('monthly_limit').then(check),
       sb.from('highlights').select('text, done').eq('date', day).maybeSingle().then(check),
     ]);

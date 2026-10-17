@@ -1,4 +1,4 @@
--- Panel de Vida · esquema de base de datos para Supabase
+-- Panel de Vida · 001 · esquema base
 --
 -- Cómo usarlo: en tu proyecto de Supabase, abre "SQL Editor", pega este archivo
 -- completo y pulsa "Run". Se puede ejecutar una sola vez sobre un proyecto vacío.

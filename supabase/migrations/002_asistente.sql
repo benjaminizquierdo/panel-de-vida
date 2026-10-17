@@ -1,6 +1,6 @@
 -- Panel de Vida · asistente de IA
 --
--- Ejecutar DESPUÉS de schema.sql (SQL Editor → pegar → Run). Añade el contador
+-- Ejecutar DESPUÉS de 001_base.sql (SQL Editor → pegar → Run). Añade el contador
 -- de mensajes diarios con el que la Edge Function `assistant` limita el uso.
 
 create table public.assistant_usage (

@@ -6,7 +6,7 @@ Plataforma web para gestionar tu vida personal en un solo sitio: **proyectos y t
 - **Proyectos**: tablero con columnas Pendiente → En curso → Hecha, prioridades, fechas límite y progreso por proyecto.
 - **Hábitos y salud**: cuadrícula semanal con rachas 🔥, registro diario de sueño, energía, ejercicio y peso, y gráficos de 14 días.
 - **Objetivos**: metas anuales y trimestrales con progreso, y plantilla de revisión semanal (logros, dificultades, aprendizajes, foco).
-- **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses.
+- **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos.
 - **Asistente de IA** 💬: un chat (con Claude) al que le cuentas lo que has hecho —«hoy he corrido 30 minutos y me he gastado 12 € en el almuerzo»— y lo registra en tu panel; también responde preguntas sobre tus datos.
 
 Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objetivos de ejemplo, todo editable.
@@ -40,7 +40,7 @@ Abre http://localhost:5173, crea una cuenta y listo.
 ## Ponerla en marcha con Supabase
 
 1. Crea una cuenta y un proyecto gratuito en [supabase.com](https://supabase.com).
-2. En el proyecto, ve a **SQL Editor**, pega el contenido de [`supabase/schema.sql`](supabase/schema.sql) y pulsa **Run**. Crea las tablas, las políticas de seguridad y los datos iniciales de cada cuenta nueva.
+2. En el proyecto, ve a **SQL Editor** y ejecuta, **en orden y una vez cada uno**, los archivos de [`supabase/migrations`](supabase/migrations): pega el contenido y pulsa **Run**. Crean las tablas, las políticas de seguridad y los datos iniciales de cada cuenta nueva. Cuando actualices la app, ejecuta solo las migraciones nuevas (cada una dice al principio qué hace y sirve sobre una base con datos).
 3. En **Project Settings → API**, copia la *Project URL* y la clave *anon public*.
 4. Copia `.env.example` como `.env.local` y rellena:
    ```
@@ -65,7 +65,7 @@ Netlify o Cloudflare Pages funcionan igual: comando de build `npm run build`, ca
 
 El asistente es una [Edge Function](https://supabase.com/docs/guides/functions) de Supabase (`supabase/functions/assistant`) que llama a la API de Claude con herramientas para registrar y consultar datos. Puede **añadir y modificar**, nunca borrar, y cada usuario tiene un **límite diario de mensajes** (30 por defecto) para acotar el coste. Sin esto configurado, la app funciona igual y el chat avisa de que no está disponible.
 
-1. **Base de datos**: en **SQL Editor**, ejecuta [`supabase/asistente.sql`](supabase/asistente.sql) (después de `schema.sql`). Crea el contador del límite diario.
+1. **Base de datos**: la migración [`002_asistente.sql`](supabase/migrations/002_asistente.sql) crea el contador del límite diario (ya incluida si ejecutaste todas las migraciones).
 2. **Clave de Anthropic**: en [console.anthropic.com](https://console.anthropic.com) crea una API key y, en *Limits*, fija un tope de gasto mensual. Pagas el uso de todos los usuarios.
 3. **Secretos de la función**: en Supabase → **Edge Functions → Secrets**, añade `ANTHROPIC_API_KEY` con tu clave. Opcionales:
    | Secreto | Por defecto | Para qué |
@@ -127,8 +127,10 @@ src/
   lib/            Tipos, valores por defecto, utilidades y hooks de datos
   pages/          Inicio, Proyectos, Hábitos, Objetivos, Finanzas
 supabase/
-  schema.sql      Tablas, Row Level Security y datos iniciales de cada cuenta
-  asistente.sql   Límite diario de mensajes del asistente
+  migrations/
+    001_base.sql        Tablas, Row Level Security y datos iniciales de cada cuenta
+    002_asistente.sql   Límite diario de mensajes del asistente
+    003_categorias.sql  Categorías de finanzas personalizables (migra los datos existentes)
   functions/assistant/
     index.ts      Servidor: sesión, cupo, bucle de herramientas con Claude
     tools.ts      Herramientas (registrar gastos, hábitos, salud, tareas, objetivos; consultar)
@@ -142,5 +144,5 @@ tests/
 
 ## Personalizar
 
-- **Categorías de gasto e ingreso, colores, hábitos y presupuestos iniciales**: `src/lib/defaults.ts`. Si cambias los datos iniciales, actualiza también la función `seed_new_user()` en `supabase/schema.sql`; si cambias las categorías, también `supabase/functions/assistant/tools.ts`.
+- **Hábitos, categorías y presupuestos con los que empieza cada cuenta**: `src/lib/defaults.ts` (modo demo) y, para Supabase, `create_default_finance_categories()` y `seed_new_user()` en una migración nueva. Cada usuario puede después cambiar sus categorías desde Finanzas → Categorías.
 - **Tema**: los colores están como variables CSS al principio de `src/styles.css`, con versión clara y oscura (sigue el tema del sistema).

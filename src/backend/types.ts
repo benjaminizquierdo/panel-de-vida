@@ -16,6 +16,8 @@ export interface Backend {
   insert<T extends TableName>(table: T, row: NewRow<T>): Promise<Row<T>>;
   update<T extends TableName>(table: T, id: string, patch: Partial<NewRow<T>>): Promise<void>;
   remove(table: TableName, id: string): Promise<void>;
+  /** Pasa los movimientos (y subcategorías) de una categoría a otra del mismo tipo y la borra. Devuelve los movimientos movidos. */
+  mergeCategory(sourceId: string, targetId: string): Promise<number>;
   /** Asistente de IA. Solo existe con Supabase (necesita la Edge Function). Lanza AssistantError. */
   assistant?(request: AssistantRequest): Promise<AssistantResponse>;
 }

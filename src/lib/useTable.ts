@@ -63,3 +63,5 @@ export function useTable<T extends TableName>(table: T) {
 
   return { rows, loading, add, update, remove, reload };
 }
+
+export type TableApi<T extends TableName> = ReturnType<typeof useTable<T>>;

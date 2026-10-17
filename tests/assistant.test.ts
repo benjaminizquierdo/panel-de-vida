@@ -8,6 +8,10 @@
 const USER = '11111111-1111-4111-8111-111111111111';
 const H1 = 'aaaaaaaa-0000-4000-8000-000000000001';
 const P1 = 'bbbbbbbb-0000-4000-8000-000000000001';
+const COMIDA = 'eeeeeeee-0000-4000-8000-000000000001';
+const SUPER = 'eeeeeeee-0000-4000-8000-000000000002';
+const NOMINA = 'eeeeeeee-0000-4000-8000-000000000003';
+const ARCHIVADA = 'eeeeeeee-0000-4000-8000-000000000004';
 const TODAY = '2026-10-17';
 
 // ---------------------------------------------------------------- Supabase simulado
@@ -25,6 +29,12 @@ const tables: Record<string, Row[]> = {
   highlights: [],
   health_logs: [],
   transactions: [],
+  finance_categories: [
+    { id: COMIDA, parent_id: null, type: 'gasto', name: 'Comida', icon: '🍽️', color: '#f59e0b', archived: false, sort_order: 1 },
+    { id: SUPER, parent_id: COMIDA, type: 'gasto', name: 'Supermercado', icon: '🛒', color: '#f59e0b', archived: false, sort_order: 1 },
+    { id: NOMINA, parent_id: null, type: 'ingreso', name: 'Nómina', icon: '💼', color: '#16a34a', archived: false, sort_order: 1 },
+    { id: ARCHIVADA, parent_id: null, type: 'gasto', name: 'Vieja', icon: '🏷️', color: '#64748b', archived: true, sort_order: 9 },
+  ],
 };
 const writes: { method: string; table: string; body: unknown }[] = [];
 let quotaReply = 29;
@@ -127,7 +137,7 @@ scripted.push(
   message(
     [
       { type: 'thinking', thinking: '', signature: 'firma-1' },
-      { type: 'tool_use', id: 'tu_1', name: 'registrar_movimiento', input: { tipo: 'gasto', importe: 12.5, categoria: 'Comida', nota: 'almuerzo', fecha: TODAY } },
+      { type: 'tool_use', id: 'tu_1', name: 'registrar_movimiento', input: { tipo: 'gasto', importe: 12.5, categoria_id: SUPER, nota: 'almuerzo', fecha: TODAY } },
       { type: 'tool_use', id: 'tu_2', name: 'marcar_habito', input: { habito_id: H1, fecha: TODAY } },
     ],
     'tool_use',
@@ -147,7 +157,8 @@ ok(
 ok(data.appended?.[2]?.content?.[0]?.signature === 'firma-1', 'el bloque de razonamiento vuelve intacto al historial');
 
 const tx = writes.find((w) => w.table === 'transactions')?.body as Row | undefined;
-ok(tx?.amount === 12.5 && tx?.category === 'Comida' && tx?.type === 'gasto' && tx?.date === TODAY, 'inserta el gasto correcto en transactions');
+ok(tx?.amount === 12.5 && tx?.category_id === SUPER && tx?.type === 'gasto' && tx?.date === TODAY, 'inserta el gasto en transactions con el id de la subcategoría');
+ok(data.actions?.[0]?.includes('Comida › Supermercado'), 'la acción nombra la categoría con su ruta');
 const log = writes.find((w) => w.table === 'habit_logs')?.body;
 const logRow = (Array.isArray(log) ? log[0] : log) as Row | undefined;
 ok(logRow?.habit_id === H1 && logRow?.date === TODAY && logRow?.user_id === USER, 'marca el hábito en habit_logs');
@@ -159,7 +170,7 @@ ok(!('fallbacks' in b), 'no envía fallbacks con Haiku (no lo admite)');
 ok((b.thinking as Row)?.type === 'adaptive' && ((b.thinking as Row).block_binding as Row)?.prefix_mismatch_behavior === 'drop_block', 'thinking adaptativo con drop_block');
 ok((b.output_config as Row)?.effort === 'low', 'esfuerzo low');
 ok((b.cache_control as Row)?.type === 'ephemeral', 'caché de prompt activada');
-ok(Array.isArray(b.tools) && (b.tools as Row[]).length === 10 && (b.tools as Row[]).every((t) => t.strict === true), '10 herramientas, todas strict');
+ok(Array.isArray(b.tools) && (b.tools as Row[]).length === 11 && (b.tools as Row[]).every((t) => t.strict === true), '11 herramientas, todas strict');
 // Límite de la API para herramientas strict: como mucho 16 parámetros con anyOf o type: [..].
 const unions = (b.tools as { input_schema: { properties: Record<string, Row> } }[])
   .flatMap((t) => Object.values(t.input_schema.properties))
@@ -169,6 +180,12 @@ ok(typeof b.system === 'string' && !(b.system as string).includes(TODAY), 'el pr
 const msgs = b.messages as Row[];
 ok(msgs.length === 2 && msgs[0].role === 'user' && msgs[1].role === 'system', 'el contexto va como mensaje role: system tras el del usuario');
 ok(String(msgs[1].content).includes('Meditar') && String(msgs[1].content).includes(TODAY) && String(msgs[1].content).includes('Ana'), 'el contexto incluye hábitos, fecha y nombre');
+const ctxJson = JSON.parse(String(msgs[1].content).split('\n').at(-1)!);
+ok(
+  ctxJson.categorias?.gasto?.[0]?.sub?.[0]?.id === SUPER && ctxJson.categorias?.ingreso?.[0]?.id === NOMINA,
+  'el contexto incluye las categorías en árbol, con sus ids',
+);
+ok(!JSON.stringify(ctxJson.categorias).includes('Vieja'), 'las categorías archivadas no se ofrecen al asistente');
 const beta = first.headers.get('anthropic-beta') ?? '';
 ok(beta === 'thinking-binding-controls-2026-08-01', `solo la cabecera beta de drop_block (${beta})`);
 const lastMsg = (second.body.messages as Row[]).at(-1) as { role: string; content: Row[] };
@@ -207,6 +224,38 @@ scripted.push(
   ok(r.status === 200 && task?.project_id === null && task?.due_date === null, 'proyecto y fecha vacíos se guardan como null');
   ok(results.content.every((c) => !c.is_error), `consultar sin fechas funciona (${JSON.stringify(results.content.map((c) => c.is_error ?? false))})`);
   ok(d.actions[0]?.includes('Llamar al banco'), 'describe la tarea creada');
+  const consulta = JSON.parse(String(results.content[1].content));
+  ok(
+    consulta.filas?.[0]?.categoria === 'Comida › Supermercado' && consulta.resumen?.gastos_por_categoria?.Comida === 12.5,
+    'consultar movimientos devuelve nombres de categoría y suma las subcategorías en su categoría principal',
+  );
+}
+
+// 3c. Categorías: tipo equivocado, archivada y crear subcategoría
+scripted.push(
+  message(
+    [
+      { type: 'tool_use', id: 'tu_6', name: 'registrar_movimiento', input: { tipo: 'ingreso', importe: 10, categoria_id: COMIDA, nota: '', fecha: TODAY } },
+      { type: 'tool_use', id: 'tu_7', name: 'registrar_movimiento', input: { tipo: 'gasto', importe: 10, categoria_id: ARCHIVADA, nota: '', fecha: TODAY } },
+      { type: 'tool_use', id: 'tu_8', name: 'crear_categoria', input: { tipo: 'gasto', nombre: 'Panadería', icono: '🥖', categoria_padre_id: COMIDA } },
+      { type: 'tool_use', id: 'tu_9', name: 'crear_categoria', input: { tipo: 'gasto', nombre: 'Nivel 3', icono: '🥖', categoria_padre_id: SUPER } },
+    ],
+    'tool_use',
+  ),
+  message([{ type: 'text', text: 'Listo.' }], 'end_turn'),
+);
+{
+  const before = writes.filter((w) => w.table === 'transactions').length;
+  const r = await call({ message: 'pruebas de categorías', history: [], today: TODAY });
+  const d = await r.json();
+  const results = ((anthropicRequests.at(-1)!.body.messages as Row[]).at(-1) as { content: Row[] }).content;
+  ok(results[0].is_error === true && String(results[0].content).includes('gastos'), 'un ingreso en una categoría de gastos se rechaza con explicación');
+  ok(results[1].is_error === true && String(results[1].content).includes('archivada'), 'una categoría archivada se rechaza');
+  ok(writes.filter((w) => w.table === 'transactions').length === before, 'ninguno de los dos movimientos se guarda');
+  const created = writes.filter((w) => w.table === 'finance_categories').at(-1)?.body as Row | undefined;
+  ok(!results[2].is_error && created?.parent_id === COMIDA && created?.color === '#f59e0b', 'crea la subcategoría con el color de su categoría');
+  ok(results[3].is_error === true && String(results[3].content).includes('dos niveles'), 'no deja crear un tercer nivel');
+  ok(d.actions?.length === 1 && d.actions[0].includes('Comida › Panadería'), `solo se informa de lo guardado (${JSON.stringify(d.actions)})`);
 }
 
 // 4. Historial enorme → se recorta por delante, hasta un turno del usuario
