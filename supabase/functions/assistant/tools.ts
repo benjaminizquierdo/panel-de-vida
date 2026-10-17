@@ -48,6 +48,7 @@ const QUERYABLE = {
   presupuestos: { table: 'budgets', columns: 'category_id, monthly_limit', dateColumn: null },
   destacados: { table: 'highlights', columns: 'date, text, done', dateColumn: 'date' },
   revisiones: { table: 'reviews', columns: 'week_start, wins, challenges, lessons, next_focus', dateColumn: 'week_start' },
+  periodicos: { table: 'recurring_transactions', columns: 'note, type, amount, category_id, frequency, next_date, end_date, active', dateColumn: null },
 } as const;
 
 type QueryableName = keyof typeof QUERYABLE;
@@ -63,6 +64,21 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
       categoria_id: str('id de la categoría o subcategoría del contexto (la más específica que encaje), del mismo tipo que el movimiento'),
       nota: str('Descripción breve (p. ej. «cena con amigos»); cadena vacía si no hay'),
       fecha: date('Día del movimiento'),
+    }),
+  },
+  {
+    name: 'crear_periodico',
+    description:
+      'Crea un gasto o ingreso periódico que se apunta solo cada semana, mes o año (suscripciones, alquiler, nómina, cuotas). Si la primera fecha es hoy o anterior, crea ya los movimientos que tocan. No uses registrar_movimiento además para la misma fecha.',
+    strict: true,
+    input_schema: object({
+      tipo: oneOf(['gasto', 'ingreso'], 'Gasto o ingreso'),
+      importe: num('Importe en euros de cada vez, mayor que 0'),
+      categoria_id: str('id de la categoría o subcategoría del contexto, del mismo tipo'),
+      concepto: str('Concepto corto: «Netflix», «Alquiler», «Nómina»…'),
+      frecuencia: oneOf(['semanal', 'mensual', 'anual'], 'Cada cuánto se repite'),
+      primera_fecha: date('Primera fecha (marca también el día del mes en que se repite)'),
+      fecha_fin: optDate('Última fecha, si termina (préstamo, cuotas)'),
     }),
   },
   {
@@ -275,6 +291,39 @@ const handlers: Record<string, (input: Input, ctx: ToolContext) => Promise<unkno
     const label = path(category.id);
     ctx.actions.push(`${type === 'gasto' ? 'Gasto' : 'Ingreso'} de ${eur(amount)} en ${label}${note ? ` (${note})` : ''} · ${dayLabel(day, ctx.today)}`);
     return { guardado: true, tipo: type, importe: amount, categoria: label, fecha: day };
+  },
+
+  async crear_periodico(input, ctx) {
+    const type = input.tipo === 'ingreso' ? 'ingreso' : 'gasto';
+    const amount = Math.round(positive(input.importe, 'importe') * 100) / 100;
+    const note = text(input.concepto, 'concepto').slice(0, 120);
+    const frequency = ['semanal', 'mensual', 'anual'].includes(input.frecuencia as string) ? (input.frecuencia as string) : 'mensual';
+    const first = optionalDate(input.primera_fecha, 'primera_fecha') ?? ctx.today;
+    const end = optionalDate(input.fecha_fin, 'fecha_fin');
+    if (end && end < first) throw new Error('La fecha de fin no puede ser anterior a la primera');
+    const { byId, path } = await loadCategories(ctx);
+    const category = byId.get(text(input.categoria_id, 'categoria_id'));
+    if (!category) throw new Error('No existe esa categoría. Usa un id de las categorías del contexto.');
+    if (category.type !== type) throw new Error(`«${category.name}» no es una categoría de ${type === 'gasto' ? 'gastos' : 'ingresos'}.`);
+    const [, month, day] = first.split('-').map(Number);
+    check(
+      await ctx.db.from('recurring_transactions').insert({
+        type,
+        amount,
+        category_id: category.id,
+        note,
+        frequency,
+        anchor_day: day,
+        anchor_month: month,
+        next_date: first,
+        end_date: end,
+      }),
+    );
+    // Crea ya los que tocan (hoy o atrasados), igual que la app al guardarlo.
+    const created = Number(check(await ctx.db.rpc('generate_my_recurring', { p_until: ctx.today })) ?? 0);
+    const every = { semanal: 'cada semana', mensual: 'cada mes', anual: 'cada año' }[frequency];
+    ctx.actions.push(`Periódico: ${note}, ${eur(amount)} ${every} en ${path(category.id)} desde ${dayLabel(first, ctx.today)}`);
+    return { guardado: true, concepto: note, frecuencia: frequency, movimientos_creados_ahora: created };
   },
 
   async crear_categoria(input, ctx) {
@@ -498,6 +547,21 @@ const handlers: Record<string, (input: Input, ctx: ToolContext) => Promise<unkno
     if (name === 'presupuestos') {
       const { path } = await loadCategories(ctx);
       return { filas: rows.map((r) => ({ categoria: path(r.category_id), limite_mensual: Number(r.monthly_limit) })), total_filas: rows.length };
+    }
+
+    if (name === 'periodicos') {
+      const { path } = await loadCategories(ctx);
+      const filas = rows.map((r) => ({
+        concepto: r.note,
+        tipo: r.type,
+        importe: Number(r.amount),
+        categoria: path(r.category_id),
+        frecuencia: r.frequency,
+        proxima_fecha: r.next_date,
+        fecha_fin: r.end_date,
+        activo: r.active,
+      }));
+      return { filas, total_filas: rows.length };
     }
 
     if (name === 'habitos_cumplidos') {

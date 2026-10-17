@@ -35,6 +35,7 @@ const tables: Record<string, Row[]> = {
     { id: NOMINA, parent_id: null, type: 'ingreso', name: 'Nómina', icon: '💼', color: '#16a34a', archived: false, sort_order: 1 },
     { id: ARCHIVADA, parent_id: null, type: 'gasto', name: 'Vieja', icon: '🏷️', color: '#64748b', archived: true, sort_order: 9 },
   ],
+  recurring_transactions: [],
 };
 const writes: { method: string; table: string; body: unknown }[] = [];
 let quotaReply = 29;
@@ -54,6 +55,11 @@ const supabase = Deno.serve({ port: 54321, onListen() {} }, async (req) => {
   if (url.pathname === '/rest/v1/rpc/assistant_take_quota') {
     quotaCalls++;
     return respond(quotaReply);
+  }
+
+  if (url.pathname === '/rest/v1/rpc/generate_my_recurring') {
+    writes.push({ method: 'RPC', table: 'generate_my_recurring', body: await req.json() });
+    return respond(1);
   }
 
   const table = url.pathname.replace('/rest/v1/', '');
@@ -170,7 +176,7 @@ ok(!('fallbacks' in b), 'no envía fallbacks con Haiku (no lo admite)');
 ok((b.thinking as Row)?.type === 'adaptive' && ((b.thinking as Row).block_binding as Row)?.prefix_mismatch_behavior === 'drop_block', 'thinking adaptativo con drop_block');
 ok((b.output_config as Row)?.effort === 'low', 'esfuerzo low');
 ok((b.cache_control as Row)?.type === 'ephemeral', 'caché de prompt activada');
-ok(Array.isArray(b.tools) && (b.tools as Row[]).length === 11 && (b.tools as Row[]).every((t) => t.strict === true), '11 herramientas, todas strict');
+ok(Array.isArray(b.tools) && (b.tools as Row[]).length === 12 && (b.tools as Row[]).every((t) => t.strict === true), '12 herramientas, todas strict');
 // Límite de la API para herramientas strict: como mucho 16 parámetros con anyOf o type: [..].
 const unions = (b.tools as { input_schema: { properties: Record<string, Row> } }[])
   .flatMap((t) => Object.values(t.input_schema.properties))
@@ -256,6 +262,44 @@ scripted.push(
   ok(!results[2].is_error && created?.parent_id === COMIDA && created?.color === '#f59e0b', 'crea la subcategoría con el color de su categoría');
   ok(results[3].is_error === true && String(results[3].content).includes('dos niveles'), 'no deja crear un tercer nivel');
   ok(d.actions?.length === 1 && d.actions[0].includes('Comida › Panadería'), `solo se informa de lo guardado (${JSON.stringify(d.actions)})`);
+}
+
+// 3d. Periódicos: crear uno genera ya los movimientos que tocan
+scripted.push(
+  message(
+    [
+      {
+        type: 'tool_use',
+        id: 'tu_10',
+        name: 'crear_periodico',
+        input: { tipo: 'gasto', importe: 12.99, categoria_id: SUPER, concepto: 'Netflix', frecuencia: 'mensual', primera_fecha: '2026-10-05', fecha_fin: '' },
+      },
+      {
+        type: 'tool_use',
+        id: 'tu_11',
+        name: 'crear_periodico',
+        input: { tipo: 'ingreso', importe: 1500, categoria_id: COMIDA, concepto: 'Nómina', frecuencia: 'mensual', primera_fecha: TODAY, fecha_fin: '' },
+      },
+      { type: 'tool_use', id: 'tu_12', name: 'consultar', input: { tabla: 'periodicos', desde: '', hasta: '' } },
+    ],
+    'tool_use',
+  ),
+  message([{ type: 'text', text: 'Hecho.' }], 'end_turn'),
+);
+{
+  const r = await call({ message: 'apunta Netflix 12,99 cada mes desde el día 5', history: [], today: TODAY });
+  const d = await r.json();
+  const results = ((anthropicRequests.at(-1)!.body.messages as Row[]).at(-1) as { content: Row[] }).content;
+  const rule = writes.filter((w) => w.table === 'recurring_transactions').at(-1)?.body as Row | undefined;
+  ok(
+    !results[0].is_error && rule?.anchor_day === 5 && rule?.anchor_month === 10 && rule?.next_date === '2026-10-05' && rule?.end_date === null,
+    'crea el periódico con su día de referencia (5) y sin fecha de fin',
+  );
+  const rpc = writes.filter((w) => w.table === 'generate_my_recurring').at(-1)?.body as Row | undefined;
+  ok(rpc?.p_until === TODAY && JSON.parse(String(results[0].content)).movimientos_creados_ahora === 1, 'genera en el momento los movimientos que ya tocan');
+  ok(results[1].is_error === true, 'un ingreso periódico en una categoría de gastos se rechaza');
+  ok(!results[2].is_error, 'consultar periodicos funciona');
+  ok(d.actions?.length === 1 && d.actions[0].includes('Netflix') && d.actions[0].includes('cada mes'), `describe el periódico creado (${d.actions?.[0]})`);
 }
 
 // 4. Historial enorme → se recorta por delante, hasta un turno del usuario

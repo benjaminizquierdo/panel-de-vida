@@ -3,17 +3,20 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { Card, confirmDelete, Empty, IconButton, Progress, Stat } from '../components/ui';
 import { categoryOptions, categoryPath, categoryTree, topLevelId } from '../lib/categories';
 import { toast } from '../lib/toast';
-import type { Budget, FinanceCategory, NewRow, TxType } from '../lib/types';
+import type { Budget, FinanceCategory, Frequency, NewRow, TxType } from '../lib/types';
 import { tooltipStyle, useChartColors } from '../lib/useChartColors';
 import { useTable } from '../lib/useTable';
 import { addMonths, eur, fmtDate, fmtMonth, fmtMonthShort, monthKey, parseNum, pct, sumBy, today } from '../lib/utils';
+import { FREQUENCY_LABEL, scheduleFrom } from '../lib/recurring';
 import FinanceCategories from './FinanceCategories';
 import FinanceImport from './FinanceImport';
+import FinanceRecurring, { runRecurring } from './FinanceRecurring';
 
-type View = 'resumen' | 'categorias' | 'importar';
+type View = 'resumen' | 'periodicos' | 'categorias' | 'importar';
 
 const VIEWS: { id: View; label: string }[] = [
   { id: 'resumen', label: 'Resumen' },
+  { id: 'periodicos', label: 'Periódicos' },
   { id: 'categorias', label: 'Categorías' },
   { id: 'importar', label: 'Importar' },
 ];
@@ -23,6 +26,7 @@ export default function Finance() {
   const txs = useTable('transactions');
   const budgets = useTable('budgets');
   const categories = useTable('finance_categories');
+  const recurring = useTable('recurring_transactions');
   const c = useChartColors();
   const currentMonth = monthKey(today());
   const [month, setMonth] = useState(currentMonth);
@@ -85,6 +89,8 @@ export default function Finance() {
 
       {view === 'categorias' ? (
         <FinanceCategories categories={categories} transactions={txs.rows} />
+      ) : view === 'periodicos' ? (
+        <FinanceRecurring categories={categories.rows} recurring={recurring} />
       ) : view === 'importar' ? (
         <FinanceImport
           categories={categories.rows}
@@ -124,7 +130,17 @@ export default function Finance() {
 
           <div className="grid-sidebar">
             <div className="stack">
-              <NewTransaction categories={categories.rows} onAdd={txs.add} onManage={() => setView('categorias')} />
+              <NewTransaction
+                categories={categories.rows}
+                onAdd={txs.add}
+                onAddRecurring={async (rule) => {
+                  if (!(await recurring.add(rule))) return false;
+                  toast(`«${rule.note}» se apuntará ${FREQUENCY_LABEL[rule.frequency].toLowerCase()}`);
+                  await runRecurring();
+                  return true;
+                }}
+                onManage={() => setView('categorias')}
+              />
               <Card title="Presupuesto por categoría">
                 {budgetRows.length === 0 ? (
                   <Empty>{categories.loading ? 'Cargando…' : 'Sin categorías de gasto todavía.'}</Empty>
@@ -180,6 +196,12 @@ export default function Finance() {
                             </span>
                             <strong>{categoryPath(byId, t.category_id)}</strong>
                             {t.note && <span className="muted"> · {t.note}</span>}
+                            {t.source === 'recurrente' && (
+                              <span className="muted" title="Movimiento periódico" aria-label="(periódico)">
+                                {' '}
+                                🔁
+                              </span>
+                            )}
                           </span>
                           <span className={`tx-amount ${t.type}`}>
                             {t.type === 'gasto' ? '−' : '+'}
@@ -208,9 +230,10 @@ export default function Finance() {
   );
 }
 
-function NewTransaction({ categories, onAdd, onManage }: {
+function NewTransaction({ categories, onAdd, onAddRecurring, onManage }: {
   categories: FinanceCategory[];
   onAdd: (t: NewRow<'transactions'>) => Promise<unknown>;
+  onAddRecurring: (rule: NewRow<'recurring_transactions'>) => Promise<boolean>;
   onManage: () => void;
 }) {
   const [type, setType] = useState<TxType>('gasto');
@@ -218,6 +241,7 @@ function NewTransaction({ categories, onAdd, onManage }: {
   const [categoryId, setCategoryId] = useState('');
   const [date, setDate] = useState(today());
   const [note, setNote] = useState('');
+  const [repeat, setRepeat] = useState<Frequency | ''>('');
   const selectId = useId();
 
   const options = categoryOptions(categories, type);
@@ -235,10 +259,22 @@ function NewTransaction({ categories, onAdd, onManage }: {
       toast(`Crea antes una categoría de ${type === 'gasto' ? 'gastos' : 'ingresos'}`, 'error');
       return;
     }
-    const created = await onAdd({ type, amount: Math.round(value * 100) / 100, category_id: selected, date, note: note.trim() });
+    const base = { type, amount: Math.round(value * 100) / 100, category_id: selected, note: note.trim() };
+    // Con «Repetir», no se apunta a mano: se crea el periódico y él genera el movimiento de esa fecha.
+    const created = repeat
+      ? await onAddRecurring({
+          ...base,
+          note: base.note || (categories.find((cat) => cat.id === selected)?.name ?? 'Periódico'),
+          frequency: repeat,
+          ...scheduleFrom(date),
+          end_date: null,
+          active: true,
+        })
+      : await onAdd({ ...base, date });
     if (created) {
       setAmount('');
       setNote('');
+      setRepeat('');
     }
   };
 
@@ -279,11 +315,24 @@ function NewTransaction({ categories, onAdd, onManage }: {
             ))}
           </select>
         </div>
-        <label className="field">
-          <span>Nota</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Opcional" />
-        </label>
-        <button className="btn primary">Añadir {type}</button>
+        <div className="field-row">
+          <label className="field">
+            <span>Nota</span>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={repeat ? 'Concepto: Netflix, alquiler…' : 'Opcional'} />
+          </label>
+          <label className="field">
+            <span>Repetir</span>
+            <select value={repeat} onChange={(e) => setRepeat(e.target.value as Frequency | '')}>
+              <option value="">No</option>
+              {(Object.keys(FREQUENCY_LABEL) as Frequency[]).map((f) => (
+                <option key={f} value={f}>
+                  {FREQUENCY_LABEL[f]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <button className="btn primary">{repeat ? `Crear ${type} periódico` : `Añadir ${type}`}</button>
       </form>
     </Card>
   );

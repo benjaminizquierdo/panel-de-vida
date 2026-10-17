@@ -1,5 +1,5 @@
 // Pruebas de la lectura de CSV y de la propuesta de categorías (src/lib/csv.ts e importer.ts).
-// Uso: npm run test:importer
+// Uso: npm run test:lib
 
 import { detectDelimiter, parseAmount, parseCsv, parseDateCell } from '../src/lib/csv.ts';
 import { groupLabel, guessMapping, isTradeRepublic, readGeneric, readTradeRepublic, suggestCategory } from '../src/lib/importer.ts';

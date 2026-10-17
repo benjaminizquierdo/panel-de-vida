@@ -183,6 +183,73 @@ await db.query(`update public.transactions set category_id = $1 where category_i
 await db.query(`delete from public.finance_categories where id = $1`, [superA]);
 ok((await one(`select count(*)::int n from public.import_rules`)).n === 0, 'borrar una categoría borra sus reglas');
 
+// ---------------------------------------------------------------- 005: periódicos
+
+await asAdmin();
+await db.exec(migration('005_periodicos.sql'));
+ok(true, '005_periodicos.sql se ejecuta sin errores (sin pg_cron, sigue adelante)');
+
+// Calendario: los mismos casos que tests/recurring.test.ts para nextOccurrence().
+const next = async (d, f, day, month = 1) => (await one(`select public.recurring_next_date($1::date, $2, $3, $4)::text as d`, [d, f, day, month])).d;
+const calendar = [
+  ['2026-01-31', 'mensual', 31, 1, '2026-02-28'],
+  ['2026-02-28', 'mensual', 31, 1, '2026-03-31'],
+  ['2028-01-30', 'mensual', 30, 1, '2028-02-29'],
+  ['2026-12-15', 'mensual', 15, 1, '2027-01-15'],
+  ['2026-10-17', 'semanal', 17, 1, '2026-10-24'],
+  ['2028-02-29', 'anual', 29, 2, '2029-02-28'],
+  ['2031-02-28', 'anual', 29, 2, '2032-02-29'],
+];
+for (const [d, f, day, month, expected] of calendar) {
+  const got = await next(d, f, day, month);
+  ok(got === expected, `recurring_next_date(${d}, ${f}, día ${day}) = ${expected}${got !== expected ? ` (da ${got})` : ''}`);
+}
+
+await as(A);
+const today = (await one(`select current_date::text as d`)).d;
+const ago = (await one(`select (current_date - interval '2 month')::date::text as d`)).d;
+const otrosIngresos = await catId('Otros ingresos', 'ingreso');
+const rule = await one(
+  `insert into public.recurring_transactions (type, amount, category_id, note, frequency, anchor_day, next_date)
+   values ('gasto', 12.99, $1, 'Netflix', 'mensual', extract(day from $2::date), $2) returning id`,
+  [otrosA, ago],
+);
+const generated = (await one(`select public.generate_my_recurring(current_date) as n`)).n;
+ok(generated === 3, `genera los 3 meses pendientes desde hace 2 meses (${generated})`);
+ok((await one(`select public.generate_my_recurring(current_date) as n`)).n === 0, 'volver a generar no duplica nada');
+const after = await one(`select next_date::text as d, active from public.recurring_transactions where id = $1`, [rule.id]);
+ok(after.d > today && after.active, `la próxima fecha queda en el futuro (${after.d})`);
+const txRule = await one(`select count(*)::int n, min(note) note, min(source) src from public.transactions where external_id like $1`, [`${rule.id}:%`]);
+ok(txRule.n === 3 && txRule.note === 'Netflix' && txRule.src === 'recurrente', 'los movimientos generados llevan concepto, origen «recurrente» e id externo');
+await db.query(`delete from public.transactions where external_id = $1`, [`${rule.id}:${ago}`]);
+await db.query(`update public.recurring_transactions set next_date = $1 where id = $2`, [ago, rule.id]);
+ok((await one(`select public.generate_my_recurring(current_date) as n`)).n === 1, 'si se rebobina, solo se recrea el que faltaba (el resto ya existen)');
+
+const ended = await one(
+  `insert into public.recurring_transactions (type, amount, category_id, note, frequency, anchor_day, next_date, end_date)
+   values ('ingreso', 100, $1, 'Beca', 'mensual', 1, $2, $2) returning id`,
+  [otrosIngresos, ago],
+);
+await db.query(`select public.generate_my_recurring(current_date)`);
+ok((await one(`select active from public.recurring_transactions where id = $1`, [ended.id])).active === false, 'al pasar su fecha de fin, el periódico se desactiva');
+ok((await one(`select count(*)::int n from public.transactions where external_id like $1`, [`${ended.id}:%`])).n === 1, 'y no genera nada después de su fin');
+ok((await one(`select public.generate_my_recurring(current_date + 30) as n`)).n === 0, 'no se pueden generar movimientos más allá de mañana');
+ok(!!(await fails(`insert into public.recurring_transactions (type, amount, category_id, note, frequency, anchor_day, next_date) values ('ingreso', 1, $1, 'x', 'mensual', 1, current_date)`, [otrosA])), 'un periódico de ingreso no puede usar una categoría de gasto');
+
+await as(B);
+ok((await one(`select count(*)::int n from public.recurring_transactions`)).n === 0, 'B no ve los periódicos de A');
+ok((await one(`select public.generate_my_recurring(current_date) as n`)).n === 0, 'B generando solo afecta a los suyos');
+ok(!!(await fails(`select public.generate_recurring_for_user($1, current_date)`, [A])), 'los clientes no pueden generar para otro usuario');
+ok(!!(await fails(`select public.generate_recurring_all()`)), 'ni lanzar la generación global');
+await asAdmin();
+ok((await one(`select public.generate_recurring_all() as n`)).n === 0, 'la tarea diaria (como administrador) funciona y no duplica');
+
+await as(A);
+const suscripciones = await catId('Suscripciones');
+await db.query(`select public.merge_finance_category($1, $2)`, [otrosA, suscripciones]);
+ok((await one(`select category_id from public.recurring_transactions where id = $1`, [rule.id])).category_id === suscripciones, 'fusionar categorías mueve también sus periódicos');
+ok(!!(await fails(`delete from public.finance_categories where id = $1`, [suscripciones])), 'no se puede borrar una categoría que usan movimientos o periódicos');
+
 // ---------------------------------------------------------------- Seguridad general (resto de tablas)
 
 const pA = await one(`insert into public.projects (name) values ('Proyecto de A') returning id, user_id`);

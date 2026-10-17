@@ -87,6 +87,26 @@ export interface Transaction extends Base {
   external_id?: string | null;
 }
 
+export type Frequency = 'semanal' | 'mensual' | 'anual';
+
+/** Gasto o ingreso que se crea solo cada semana, mes o año (supabase/migrations/005_periodicos.sql). */
+export interface RecurringTransaction extends Base {
+  type: TxType;
+  amount: number;
+  category_id: string;
+  /** Concepto: «Netflix», «Nómina»… */
+  note: string;
+  frequency: Frequency;
+  /** Día del mes (1-31) en que toca; si el mes es más corto, su último día. */
+  anchor_day: number;
+  /** Mes (1-12) en que toca, para los anuales. */
+  anchor_month: number;
+  /** Próxima fecha que falta por crear. */
+  next_date: string;
+  end_date: string | null;
+  active: boolean;
+}
+
 /** «Si el comercio contiene `pattern` → categoría», para las importaciones. */
 export interface ImportRule extends Base {
   pattern: string;
@@ -108,6 +128,7 @@ export interface Highlight extends Base {
 export interface Tables {
   finance_categories: FinanceCategory;
   import_rules: ImportRule;
+  recurring_transactions: RecurringTransaction;
   projects: Project;
   tasks: Task;
   habits: Habit;

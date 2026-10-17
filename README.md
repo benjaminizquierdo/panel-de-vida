@@ -122,7 +122,7 @@ npm run panel -- add goals '{"title": "Correr 10 km", "horizon": "trimestral", "
 npm run typecheck       # tipos de TypeScript
 npm run test:db         # ejecuta los .sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
 npm run test:assistant  # ejecuta la Edge Function en Deno contra Supabase y Claude simulados
-npm run test:importer   # lectura de CSV, formato de Trade Republic y categorías propuestas
+npm run test:lib        # lector de CSV e importador, y calendario de los periódicos
 npm run build           # build de producción en dist/
 ```
 

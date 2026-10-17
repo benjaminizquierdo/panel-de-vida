@@ -3,8 +3,11 @@ import { backend } from './backend';
 import Assistant from './components/Assistant';
 import Auth from './components/Auth';
 import Toaster from './components/Toaster';
+import { notifyDataChanged } from './lib/events';
 import { isTabId, TABS, type TabId } from './lib/tabs';
+import { toast } from './lib/toast';
 import type { User } from './lib/types';
+import { today } from './lib/utils';
 import Home from './pages/Home';
 
 // Las pestañas con gráficos arrastran recharts: se cargan al abrirlas.
@@ -41,6 +44,21 @@ export default function App() {
     });
     return backend.onAuthChange(applyUser);
   }, []);
+
+  // Respaldo de la tarea diaria del servidor: al entrar, crea los periódicos que ya tocan.
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    backend
+      .generateRecurring(today())
+      .then((n) => {
+        if (n > 0) {
+          toast(`${n} ${n === 1 ? 'movimiento periódico añadido' : 'movimientos periódicos añadidos'}`);
+          notifyDataChanged();
+        }
+      })
+      .catch((e) => console.warn('No se han podido generar los periódicos:', e));
+  }, [userId]);
 
   const go = (t: TabId) => {
     setTab(t);

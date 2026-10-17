@@ -1336,6 +1336,91 @@ select.sm {
   background: var(--accent-soft);
 }
 
+/* ---------- Periódicos ---------- */
+
+.recurring-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recurring-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.recurring-row:last-child {
+  border-bottom: 0;
+}
+
+.recurring-row.is-paused > :not(:last-child) {
+  opacity: 0.5;
+}
+
+.recurring-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex: none;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch span {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background 0.15s ease;
+  pointer-events: none;
+}
+
+.switch span::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  transition: transform 0.15s ease;
+}
+
+.switch input:checked + span {
+  background: var(--accent);
+}
+
+.switch input:checked + span::after {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ---------- Importación ---------- */
 
 .file-drop {
@@ -1670,6 +1755,16 @@ select.sm {
 
   .import-cat {
     grid-column: 2 / -1;
+  }
+
+  /* Periódico: icono + concepto + importe arriba; interruptor y editar debajo. */
+  .recurring-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .recurring-row > .row {
+    grid-column: 2 / -1;
+    justify-content: flex-end;
   }
 
   /* En el móvil el chat ocupa la pantalla; el botón flotante queda debajo. */

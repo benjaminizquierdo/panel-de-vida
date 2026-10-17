@@ -1,5 +1,7 @@
 import { defaultFinanceRows, seedData, type SeedRow } from '../lib/defaults';
+import { dueDates } from '../lib/recurring';
 import type { FinanceCategory, Row, TableName, TxType, User } from '../lib/types';
+import { addDays, today } from '../lib/utils';
 import type { Backend } from './types';
 
 // Modo demo: cuentas y datos en localStorage de este navegador. Sirve para probar
@@ -230,6 +232,9 @@ export function createLocalBackend(): Backend {
         if (rows('transactions').some((t) => ids.includes(t.category_id))) {
           throw new Error('Esta categoría tiene movimientos: archívala o fusiónala con otra');
         }
+        if (rows('recurring_transactions').some((r) => ids.includes(r.category_id))) {
+          throw new Error('Esta categoría la usa un movimiento periódico: cámbialo de categoría o fusiónala con otra');
+        }
         // Las subcategorías caen en cascada: también sus presupuestos.
         save('budgets', rows('budgets').filter((b) => !ids.includes(b.category_id)));
       }
@@ -252,6 +257,12 @@ export function createLocalBackend(): Backend {
       const childIds = cats.filter((c) => c.parent_id === src.id).map((c) => c.id);
       let txs = rows('transactions');
       let budgets = rows('budgets');
+      // Los periódicos siguen a sus movimientos: los del origen (y, si el destino es subcategoría, los de sus hijas).
+      const movedRecurring = tgt.parent_id ? [src.id, ...childIds] : [src.id];
+      save(
+        'recurring_transactions',
+        rows('recurring_transactions').map((r) => (movedRecurring.includes(r.category_id) ? { ...r, category_id: tgt.id } : r)),
+      );
       if (!tgt.parent_id) {
         cats = cats.map((c) => (c.parent_id === src.id ? { ...c, parent_id: tgt.id } : c));
       } else {
@@ -271,6 +282,34 @@ export function createLocalBackend(): Backend {
       save('transactions', txs);
       save('budgets', budgets);
       return moved;
+    },
+
+    async generateRecurring(until) {
+      // Mismo algoritmo que generate_recurring_for_user() en 005_periodicos.sql.
+      const limit = until < addDays(today(), 1) ? until : addDays(today(), 1);
+      const txs = rows('transactions');
+      const keys = new Set(txs.map((t) => `${t.source ?? 'manual'}|${t.external_id}`));
+      let created = 0;
+      const rules = rows('recurring_transactions').map((r) => {
+        if (!r.active || r.next_date > limit) return r;
+        const { dates, next } = dueDates(r, limit);
+        for (const date of dates) {
+          const external_id = `${r.id}:${date}`;
+          if (keys.has(`recurrente|${external_id}`)) continue;
+          keys.add(`recurrente|${external_id}`);
+          txs.push(
+            makeRow<'transactions'>(
+              { type: r.type, amount: r.amount, category_id: r.category_id, note: r.note, date, source: 'recurrente', external_id },
+              uid(),
+            ),
+          );
+          created++;
+        }
+        return { ...r, next_date: next, active: !r.end_date || next <= r.end_date };
+      });
+      save('transactions', txs);
+      save('recurring_transactions', rules);
+      return created;
     },
   };
 }

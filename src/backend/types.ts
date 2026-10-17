@@ -23,6 +23,8 @@ export interface Backend {
   remove(table: TableName, id: string): Promise<void>;
   /** Pasa los movimientos (y subcategorías) de una categoría a otra del mismo tipo y la borra. Devuelve los movimientos movidos. */
   mergeCategory(sourceId: string, targetId: string): Promise<number>;
+  /** Crea los movimientos periódicos que ya tocan hasta `until` (como mucho, mañana). Devuelve cuántos ha creado. */
+  generateRecurring(until: string): Promise<number>;
   /** Asistente de IA. Solo existe con Supabase (necesita la Edge Function). Lanza AssistantError. */
   assistant?(request: AssistantRequest): Promise<AssistantResponse>;
 }

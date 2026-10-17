@@ -97,6 +97,12 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
       return Number(data);
     },
 
+    async generateRecurring(until) {
+      const { data, error } = await sb.rpc('generate_my_recurring', { p_until: until });
+      if (error) fail(error);
+      return Number(data);
+    },
+
     async assistant(request) {
       const { data, error } = await sb.functions.invoke<AssistantResponse>('assistant', { body: request });
       if (!error && data) return data;
