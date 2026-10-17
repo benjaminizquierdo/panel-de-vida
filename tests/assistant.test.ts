@@ -79,7 +79,7 @@ const message = (content: unknown[], stop_reason: string) => ({
   id: `msg_${anthropicRequests.length}`,
   type: 'message',
   role: 'assistant',
-  model: 'claude-sonnet-5-5',
+  model: 'claude-haiku-5-5',
   content,
   stop_reason,
   stop_sequence: null,
@@ -154,8 +154,8 @@ ok(logRow?.habit_id === H1 && logRow?.date === TODAY && logRow?.user_id === USER
 
 const [first, second] = anthropicRequests;
 const b = first.body;
-ok(b.model === 'claude-sonnet-5-5', 'usa claude-sonnet-5-5 por defecto');
-ok(b.fallbacks === 'default', 'activa fallbacks: "default"');
+ok(b.model === 'claude-haiku-5-5', 'usa claude-haiku-5-5 por defecto');
+ok(!('fallbacks' in b), 'no envía fallbacks con Haiku (no lo admite)');
 ok((b.thinking as Row)?.type === 'adaptive' && ((b.thinking as Row).block_binding as Row)?.prefix_mismatch_behavior === 'drop_block', 'thinking adaptativo con drop_block');
 ok((b.output_config as Row)?.effort === 'low', 'esfuerzo low');
 ok((b.cache_control as Row)?.type === 'ephemeral', 'caché de prompt activada');
@@ -165,7 +165,7 @@ const msgs = b.messages as Row[];
 ok(msgs.length === 2 && msgs[0].role === 'user' && msgs[1].role === 'system', 'el contexto va como mensaje role: system tras el del usuario');
 ok(String(msgs[1].content).includes('Meditar') && String(msgs[1].content).includes(TODAY) && String(msgs[1].content).includes('Ana'), 'el contexto incluye hábitos, fecha y nombre');
 const beta = first.headers.get('anthropic-beta') ?? '';
-ok(beta.includes('server-side-fallback-2026-07-01') && beta.includes('thinking-binding-controls-2026-08-01'), 'envía las dos cabeceras beta');
+ok(beta === 'thinking-binding-controls-2026-08-01', `solo la cabecera beta de drop_block (${beta})`);
 const lastMsg = (second.body.messages as Row[]).at(-1) as { role: string; content: Row[] };
 ok(lastMsg.role === 'user' && lastMsg.content.length === 2 && lastMsg.content.every((c) => c.type === 'tool_result' && !c.is_error), 'la segunda llamada lleva los 2 resultados, sin errores');
 

@@ -11,7 +11,7 @@
 //
 // Secretos (Supabase → Edge Functions → Secrets):
 //   ANTHROPIC_API_KEY       obligatorio
-//   ASSISTANT_MODEL         por defecto claude-sonnet-5-5
+//   ASSISTANT_MODEL         por defecto claude-haiku-5-5 (el más barato)
 //   ASSISTANT_EFFORT        low | medium | high (por defecto low)
 //   ASSISTANT_DAILY_LIMIT   mensajes por usuario y día (por defecto 30)
 
@@ -25,7 +25,7 @@ type Message = Anthropic.Beta.BetaMessageParam;
 const EFFORTS = ['low', 'medium', 'high'] as const;
 type Effort = (typeof EFFORTS)[number];
 
-const MODEL = Deno.env.get('ASSISTANT_MODEL') || 'claude-sonnet-5-5';
+const MODEL = Deno.env.get('ASSISTANT_MODEL') || 'claude-haiku-5-5';
 const envEffort = Deno.env.get('ASSISTANT_EFFORT') as Effort | undefined;
 const EFFORT: Effort = envEffort && EFFORTS.includes(envEffort) ? envEffort : 'low';
 const DAILY_LIMIT = Math.max(1, Number(Deno.env.get('ASSISTANT_DAILY_LIMIT')) || 30);
@@ -36,10 +36,14 @@ const MAX_BODY_CHARS = 400_000; // por encima, la petición se rechaza sin proce
 const MAX_HISTORY_MESSAGES = 60;
 const MAX_HISTORY_CHARS = 120_000; // por encima, se descartan los turnos más antiguos
 
-// fallbacks "default": si el modelo declina por política, la API reintenta en el
-// modelo de respaldo que le corresponda. drop_block: si un bloque de razonamiento
-// del historial no cuadra (p. ej. historial manipulado), se descarta en vez de dar error.
-const BETAS = ['server-side-fallback-2026-07-01', 'thinking-binding-controls-2026-08-01'];
+// Respaldo ante rechazos por política (fallbacks: "default"): la API reintenta en el
+// modelo que corresponda. Solo lo admiten estos modelos; Claude Haiku no tiene respaldo.
+const FALLBACK_MODELS = ['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5'];
+const USE_FALLBACK = FALLBACK_MODELS.includes(MODEL);
+
+// drop_block: si un bloque de razonamiento del historial no cuadra (p. ej. historial
+// manipulado), se descarta en vez de dar error.
+const BETAS = ['thinking-binding-controls-2026-08-01', ...(USE_FALLBACK ? ['server-side-fallback-2026-07-01'] : [])];
 
 const anthropic = new Anthropic(); // lee ANTHROPIC_API_KEY
 
@@ -90,7 +94,7 @@ async function converse(history: Message[], appended: Message[], ctx: ToolContex
       model: MODEL,
       max_tokens: 16000,
       betas: BETAS,
-      fallbacks: 'default',
+      ...(USE_FALLBACK ? { fallbacks: 'default' as const } : {}),
       thinking: { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } },
       output_config: { effort: EFFORT },
       cache_control: { type: 'ephemeral' },

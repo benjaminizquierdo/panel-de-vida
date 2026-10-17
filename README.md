@@ -70,7 +70,7 @@ El asistente es una [Edge Function](https://supabase.com/docs/guides/functions) 
 3. **Secretos de la función**: en Supabase → **Edge Functions → Secrets**, añade `ANTHROPIC_API_KEY` con tu clave. Opcionales:
    | Secreto | Por defecto | Para qué |
    |---|---|---|
-   | `ASSISTANT_MODEL` | `claude-sonnet-5-5` | Modelo de Claude (p. ej. `claude-haiku-5-5`, más barato, o `claude-opus-5-5`, más capaz) |
+   | `ASSISTANT_MODEL` | `claude-haiku-5-5` | Modelo de Claude. Haiku es el más barato (~0,06 céntimos de $ por mensaje); `claude-sonnet-5-5` o `claude-opus-5-5` entienden mejor peticiones complejas, a mayor coste |
    | `ASSISTANT_EFFORT` | `low` | Cuánto razona antes de responder: `low`, `medium` o `high` |
    | `ASSISTANT_DAILY_LIMIT` | `30` | Mensajes por usuario y día |
 4. **Desplegar la función** (una vez y cada vez que cambies su código):
