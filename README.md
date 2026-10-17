@@ -6,7 +6,7 @@ Plataforma web para gestionar tu vida personal en un solo sitio: **proyectos y t
 - **Proyectos**: tablero con columnas Pendiente → En curso → Hecha, prioridades, fechas límite y progreso por proyecto.
 - **Hábitos y salud**: cuadrícula semanal con rachas 🔥, registro diario de sueño, energía, ejercicio y peso, y gráficos de 14 días.
 - **Objetivos**: metas anuales y trimestrales con progreso, y plantilla de revisión semanal (logros, dificultades, aprendizajes, foco).
-- **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos. **Importa movimientos** desde el CSV de Trade Republic o de cualquier banco (ver abajo).
+- **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos. **Movimientos periódicos** (suscripciones, alquiler, nómina) que se apuntan solos cada semana, mes o año. **Importa movimientos** desde el CSV de Trade Republic o de cualquier banco (ver abajo).
 - **Asistente de IA** 💬: un chat (con Claude) al que le cuentas lo que has hecho —«hoy he corrido 30 minutos y me he gastado 12 € en el almuerzo»— y lo registra en tu panel; también responde preguntas sobre tus datos.
 
 Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objetivos de ejemplo, todo editable.
@@ -69,6 +69,15 @@ En **Finanzas → Importar** se sube un CSV; se lee en el navegador y no se guar
 - **Otros bancos**: se adivinan las columnas de fecha, importe y descripción por su nombre y se pueden corregir; hay opción de invertir el signo para bancos que exportan los gastos en positivo. Entiende «1.234,56», «-12.50», fechas DD/MM/AAAA, etc.
 - **Categorías propuestas**: primero tus reglas («si el comercio contiene X → categoría Y»), después el **código MCC** del pago con tarjeta (5411 supermercado, 5812 restaurante, 4899 suscripciones…). Si cambias la categoría de un comercio en la vista previa, se aplica a todos sus movimientos y se recuerda para la próxima importación.
 - **Sin duplicados**: cada movimiento importado guarda su origen y su identificador (`transaction_id` en Trade Republic; en otros bancos, fecha + importe + texto). Reimportar el mismo archivo salta lo ya guardado; lo garantiza una restricción única en la base de datos (migración 004).
+
+## Movimientos periódicos
+
+En **Finanzas → Periódicos** (o con «Repetir» al añadir un movimiento) se crea un gasto o ingreso que se repite **cada semana, mes o año**, con fecha de fin opcional. La vista muestra los gastos e ingresos fijos al mes y permite pausar, editar o eliminar cada uno; eliminarlo conserva los movimientos ya creados.
+
+- **Se generan solos**: una tarea diaria de `pg_cron` en Supabase (04:10 UTC) crea los que tocan, y la app hace lo mismo al iniciar sesión como respaldo. Si `pg_cron` no está disponible en tu proyecto, la migración 005 sigue adelante y solo queda la vía de la app.
+- **Calendario**: un mensual del día 31 cae el último día de los meses cortos; un anual del 29 de febrero, el 28 en años no bisiestos. Al crear uno con fecha pasada se apuntan los periodos pendientes; al reanudar uno pausado, no.
+- **Sin duplicados**: cada movimiento generado lleva `source = 'recurrente'` y como id externo `<id del periódico>:<fecha>`, con la misma restricción única que la importación. Si borras uno generado, no vuelve a aparecer.
+- El asistente también los crea («apunta Netflix 12,99 € cada mes»).
 
 ## Activar el asistente de IA
 
@@ -142,9 +151,10 @@ supabase/
     002_asistente.sql   Límite diario de mensajes del asistente
     003_categorias.sql  Categorías de finanzas personalizables (migra los datos existentes)
     004_importacion.sql Origen e id externo de cada movimiento (sin duplicados) y reglas por comercio
+    005_periodicos.sql  Movimientos periódicos y su generación diaria con pg_cron
   functions/assistant/
     index.ts      Servidor: sesión, cupo, bucle de herramientas con Claude
-    tools.ts      Herramientas (registrar gastos, hábitos, salud, tareas, objetivos; consultar)
+    tools.ts      Herramientas (registrar gastos, periódicos, hábitos, salud, tareas, objetivos; consultar)
     prompt.ts     Prompt de sistema y contexto de cada turno
 scripts/
   panel.mjs       Línea de comandos para leer/escribir datos
@@ -152,6 +162,7 @@ tests/
   schema.test.mjs    Test del esquema y de la seguridad por filas
   assistant.test.ts  Test de la Edge Function con servicios simulados
   importer.test.ts   Test del lector de CSV y del importador
+  recurring.test.ts  Test del calendario de los periódicos
 ```
 
 ## Personalizar
