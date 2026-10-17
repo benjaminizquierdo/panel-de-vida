@@ -1336,6 +1336,116 @@ select.sm {
   background: var(--accent-soft);
 }
 
+/* ---------- Importación ---------- */
+
+.file-drop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1.6rem 1rem;
+  text-align: center;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.file-drop:hover,
+.file-drop:focus-within {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.file-drop input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-drop-icon {
+  font-size: 2rem;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(150px, 220px);
+  align-items: center;
+  gap: 0.4rem 0.7rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.import-row:last-child {
+  border-bottom: 0;
+}
+
+.import-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.import-row.is-off .import-desc,
+.import-row.is-off .tx-amount {
+  opacity: 0.45;
+}
+
+.import-desc {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.import-desc strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-cat {
+  padding: 0.3rem 0.45rem;
+  font-size: 0.85rem;
+}
+
+.import-bar {
+  position: sticky;
+  bottom: 80px; /* por encima del botón flotante del asistente, que si no tapa «Importar» */
+  z-index: 4;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.14);
+}
+
 /* ---------- Asistente ---------- */
 
 .fab {
@@ -1551,6 +1661,15 @@ select.sm {
   .page-switch {
     min-width: 0;
     width: 100%;
+  }
+
+  /* Cada movimiento a importar: casilla + descripción + importe, y la categoría debajo. */
+  .import-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .import-cat {
+    grid-column: 2 / -1;
   }
 
   /* En el móvil el chat ocupa la pantalla; el botón flotante queda debajo. */

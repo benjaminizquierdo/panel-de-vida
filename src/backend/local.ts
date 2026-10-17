@@ -129,6 +129,11 @@ export function createLocalBackend(): Backend {
     if (duplicate) throw new Error(`Ya existe una categoría «${cat.name}» en ese nivel`);
   };
 
+  const checkTransaction = (tx: unknown) => {
+    const cat = rows('finance_categories').find((c) => c.id === field(tx, 'category_id'));
+    if (!cat || cat.type !== field(tx, 'type')) throw new Error('La categoría no corresponde al tipo de movimiento');
+  };
+
   return {
     mode: 'local',
 
@@ -186,12 +191,31 @@ export function createLocalBackend(): Backend {
     async insert<T extends TableName>(table: T, row: SeedRow<T>) {
       const created = makeRow<T>(row, uid());
       if (table === 'finance_categories') checkCategory(created as FinanceCategory);
-      if (table === 'transactions') {
-        const cat = rows('finance_categories').find((c) => c.id === field(created, 'category_id'));
-        if (!cat || cat.type !== field(created, 'type')) throw new Error('La categoría no corresponde al tipo de movimiento');
-      }
+      if (table === 'transactions') checkTransaction(created);
       save(table, [...rows(table), created]);
       return created;
+    },
+
+    async insertMany<T extends TableName>(table: T, newRows: SeedRow<T>[], options?: { skipDuplicates?: boolean }) {
+      const existing = rows(table);
+      // Igual que la restricción única (user_id, source, external_id) de 004_importacion.sql.
+      const keyOf = (r: unknown) => `${field(r, 'source') ?? 'manual'}|${field(r, 'external_id')}`;
+      const seen = new Set(existing.filter((r) => field(r, 'external_id')).map(keyOf));
+      const created: Row<T>[] = [];
+      for (const row of newRows) {
+        if (field(row, 'external_id')) {
+          if (seen.has(keyOf(row))) {
+            if (options?.skipDuplicates) continue;
+            throw new Error('Ese movimiento ya estaba importado');
+          }
+          seen.add(keyOf(row));
+        }
+        const r = makeRow<T>(row, uid());
+        if (table === 'transactions') checkTransaction(r);
+        created.push(r);
+      }
+      save(table, [...existing, ...created]);
+      return created.length;
     },
 
     async update<T extends TableName>(table: T, id: string, patch: Partial<SeedRow<T>>) {

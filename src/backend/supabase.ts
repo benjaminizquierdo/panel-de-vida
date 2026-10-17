@@ -67,6 +67,20 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
       return data as Row<T>;
     },
 
+    async insertMany<T extends TableName>(table: T, rows: NewRow<T>[], options?: { skipDuplicates?: boolean }) {
+      let inserted = 0;
+      for (let i = 0; i < rows.length; i += 500) {
+        const chunk = rows.slice(i, i + 500) as never;
+        const query = options?.skipDuplicates
+          ? sb.from(table).upsert(chunk, { onConflict: 'user_id,source,external_id', ignoreDuplicates: true })
+          : sb.from(table).insert(chunk);
+        const { data, error } = await query.select('id');
+        if (error) fail(error);
+        inserted += data?.length ?? 0;
+      }
+      return inserted;
+    },
+
     async update<T extends TableName>(table: T, id: string, patch: Partial<NewRow<T>>) {
       const { error } = await sb.from(table).update(patch as never).eq('id', id);
       if (error) fail(error);

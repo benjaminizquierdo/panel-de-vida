@@ -8,8 +8,15 @@ import { tooltipStyle, useChartColors } from '../lib/useChartColors';
 import { useTable } from '../lib/useTable';
 import { addMonths, eur, fmtDate, fmtMonth, fmtMonthShort, monthKey, parseNum, pct, sumBy, today } from '../lib/utils';
 import FinanceCategories from './FinanceCategories';
+import FinanceImport from './FinanceImport';
 
-type View = 'resumen' | 'categorias';
+type View = 'resumen' | 'categorias' | 'importar';
+
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'resumen', label: 'Resumen' },
+  { id: 'categorias', label: 'Categorías' },
+  { id: 'importar', label: 'Importar' },
+];
 
 export default function Finance() {
   const [view, setView] = useState<View>('resumen');
@@ -68,17 +75,25 @@ export default function Finance() {
       <div className="page-head row between">
         <h1>Finanzas</h1>
         <div className="segmented page-switch" role="tablist" aria-label="Vista de finanzas">
-          <button type="button" role="tab" aria-selected={view === 'resumen'} onClick={() => setView('resumen')}>
-            Resumen
-          </button>
-          <button type="button" role="tab" aria-selected={view === 'categorias'} onClick={() => setView('categorias')}>
-            Categorías
-          </button>
+          {VIEWS.map((v) => (
+            <button key={v.id} type="button" role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}>
+              {v.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {view === 'categorias' ? (
         <FinanceCategories categories={categories} transactions={txs.rows} />
+      ) : view === 'importar' ? (
+        <FinanceImport
+          categories={categories.rows}
+          transactions={txs.rows}
+          onDone={() => {
+            setMonth(currentMonth);
+            setView('resumen');
+          }}
+        />
       ) : (
         <>
           <div className="row month-nav">

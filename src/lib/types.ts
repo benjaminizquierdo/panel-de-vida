@@ -81,6 +81,16 @@ export interface Transaction extends Base {
   amount: number;
   category_id: string;
   note: string;
+  /** Origen: 'manual' (por defecto), 'trade_republic', 'csv'… */
+  source?: string;
+  /** Identificador en el origen; evita importar dos veces el mismo movimiento. */
+  external_id?: string | null;
+}
+
+/** «Si el comercio contiene `pattern` → categoría», para las importaciones. */
+export interface ImportRule extends Base {
+  pattern: string;
+  category_id: string;
 }
 
 export interface Budget extends Base {
@@ -97,6 +107,7 @@ export interface Highlight extends Base {
 /** Cada clave es el nombre de una tabla de Supabase (ver supabase/migrations). */
 export interface Tables {
   finance_categories: FinanceCategory;
+  import_rules: ImportRule;
   projects: Project;
   tasks: Task;
   habits: Habit;

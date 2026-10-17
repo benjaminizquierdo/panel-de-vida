@@ -6,7 +6,7 @@ Plataforma web para gestionar tu vida personal en un solo sitio: **proyectos y t
 - **Proyectos**: tablero con columnas Pendiente → En curso → Hecha, prioridades, fechas límite y progreso por proyecto.
 - **Hábitos y salud**: cuadrícula semanal con rachas 🔥, registro diario de sueño, energía, ejercicio y peso, y gráficos de 14 días.
 - **Objetivos**: metas anuales y trimestrales con progreso, y plantilla de revisión semanal (logros, dificultades, aprendizajes, foco).
-- **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos.
+- **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos. **Importa movimientos** desde el CSV de Trade Republic o de cualquier banco (ver abajo).
 - **Asistente de IA** 💬: un chat (con Claude) al que le cuentas lo que has hecho —«hoy he corrido 30 minutos y me he gastado 12 € en el almuerzo»— y lo registra en tu panel; también responde preguntas sobre tus datos.
 
 Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objetivos de ejemplo, todo editable.
@@ -61,6 +61,15 @@ Abre http://localhost:5173, crea una cuenta y listo.
 
 Netlify o Cloudflare Pages funcionan igual: comando de build `npm run build`, carpeta `dist`.
 
+## Importar movimientos (CSV)
+
+En **Finanzas → Importar** se sube un CSV; se lee en el navegador y no se guarda nada hasta confirmar.
+
+- **Trade Republic** se reconoce por su cabecera (export oficial de transacciones). La compraventa de valores viene desmarcada (no es gasto ni ingreso); el resto se agrupa por tipo de operación para incluir o excluir en bloque.
+- **Otros bancos**: se adivinan las columnas de fecha, importe y descripción por su nombre y se pueden corregir; hay opción de invertir el signo para bancos que exportan los gastos en positivo. Entiende «1.234,56», «-12.50», fechas DD/MM/AAAA, etc.
+- **Categorías propuestas**: primero tus reglas («si el comercio contiene X → categoría Y»), después el **código MCC** del pago con tarjeta (5411 supermercado, 5812 restaurante, 4899 suscripciones…). Si cambias la categoría de un comercio en la vista previa, se aplica a todos sus movimientos y se recuerda para la próxima importación.
+- **Sin duplicados**: cada movimiento importado guarda su origen y su identificador (`transaction_id` en Trade Republic; en otros bancos, fecha + importe + texto). Reimportar el mismo archivo salta lo ya guardado; lo garantiza una restricción única en la base de datos (migración 004).
+
 ## Activar el asistente de IA
 
 El asistente es una [Edge Function](https://supabase.com/docs/guides/functions) de Supabase (`supabase/functions/assistant`) que llama a la API de Claude con herramientas para registrar y consultar datos. Puede **añadir y modificar**, nunca borrar, y cada usuario tiene un **límite diario de mensajes** (30 por defecto) para acotar el coste. Sin esto configurado, la app funciona igual y el chat avisa de que no está disponible.
@@ -113,6 +122,7 @@ npm run panel -- add goals '{"title": "Correr 10 km", "horizon": "trimestral", "
 npm run typecheck       # tipos de TypeScript
 npm run test:db         # ejecuta los .sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
 npm run test:assistant  # ejecuta la Edge Function en Deno contra Supabase y Claude simulados
+npm run test:importer   # lectura de CSV, formato de Trade Republic y categorías propuestas
 npm run build           # build de producción en dist/
 ```
 
@@ -131,6 +141,7 @@ supabase/
     001_base.sql        Tablas, Row Level Security y datos iniciales de cada cuenta
     002_asistente.sql   Límite diario de mensajes del asistente
     003_categorias.sql  Categorías de finanzas personalizables (migra los datos existentes)
+    004_importacion.sql Origen e id externo de cada movimiento (sin duplicados) y reglas por comercio
   functions/assistant/
     index.ts      Servidor: sesión, cupo, bucle de herramientas con Claude
     tools.ts      Herramientas (registrar gastos, hábitos, salud, tareas, objetivos; consultar)
@@ -140,6 +151,7 @@ scripts/
 tests/
   schema.test.mjs    Test del esquema y de la seguridad por filas
   assistant.test.ts  Test de la Edge Function con servicios simulados
+  importer.test.ts   Test del lector de CSV y del importador
 ```
 
 ## Personalizar

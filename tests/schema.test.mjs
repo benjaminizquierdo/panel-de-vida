@@ -150,6 +150,39 @@ ok(moved === 1 && afterMerge.subcats_en_otros === 2, `fusionar «Comida» en «O
 ok(afterMerge.presupuestos_otros === 1, 'el destino conserva un único presupuesto');
 ok((await one(`select count(*)::int n from public.transactions where category_id = $1`, [superA])).n === 1, 'los movimientos de las subcategorías siguen en ellas');
 
+// ---------------------------------------------------------------- 004: importación
+
+await asAdmin();
+await db.exec(migration('004_importacion.sql'));
+ok(true, '004_importacion.sql se ejecuta sin errores sobre una base con datos');
+
+await as(A);
+ok((await one(`select count(*)::int n from public.transactions where source = 'manual' and external_id is null`)).n >= 3, 'los movimientos existentes quedan como «manual» sin id externo');
+const importSql = `insert into public.transactions (type, amount, category_id, source, external_id)
+  values ('gasto', 9.99, $1, 'trade_republic', $2) on conflict (user_id, source, external_id) do nothing returning id`;
+ok((await db.query(importSql, [otrosA, 'tr-001'])).rows.length === 1, 'importar un movimiento nuevo lo inserta');
+ok((await db.query(importSql, [otrosA, 'tr-001'])).rows.length === 0, 'importar el mismo id otra vez no lo duplica');
+await db.query(`insert into public.transactions (type, amount, category_id) values ('gasto', 1, $1), ('gasto', 1, $1)`, [otrosA]);
+ok(true, 'los movimientos manuales (sin id externo) nunca chocan entre sí');
+ok(!!(await fails(`insert into public.transactions (type, amount, category_id, source) values ('gasto', 1, $1, 'Origen raro!')`, [otrosA])), 'el origen solo admite minúsculas, números y _');
+
+await db.query(`insert into public.import_rules (pattern, category_id) values ('MERCADONA', $1)`, [superA]);
+ok(!!(await fails(`insert into public.import_rules (pattern, category_id) values ('mercadona', $1)`, [otrosA])), 'no se repite el mismo comercio (sin distinguir mayúsculas)');
+await as(B);
+ok((await one(`select count(*)::int n from public.import_rules`)).n === 0, 'B no ve las reglas de A');
+ok(!!(await fails(`insert into public.import_rules (pattern, category_id) values ('LIDL', $1)`, [superA])), 'B no puede crear una regla con una categoría de A');
+ok(!!(await fails(`insert into public.transactions (type, amount, category_id, source, external_id) values ('gasto', 1, $1, 'trade_republic', 'tr-001')`, [comidaA])), 'B no puede importar en categorías de A');
+const sameIdB = await db.query(
+  `insert into public.transactions (type, amount, category_id, source, external_id)
+   select 'gasto', 1, id, 'trade_republic', 'tr-001' from public.finance_categories where name = 'Otros' returning id`,
+);
+ok(sameIdB.rows.length === 1, 'el mismo id externo en otro usuario no choca');
+await as(A);
+await db.query(`delete from public.finance_categories where id = $1`, [superA]).catch(() => {});
+await db.query(`update public.transactions set category_id = $1 where category_id = $2`, [otrosA, superA]);
+await db.query(`delete from public.finance_categories where id = $1`, [superA]);
+ok((await one(`select count(*)::int n from public.import_rules`)).n === 0, 'borrar una categoría borra sus reglas');
+
 // ---------------------------------------------------------------- Seguridad general (resto de tablas)
 
 const pA = await one(`insert into public.projects (name) values ('Proyecto de A') returning id, user_id`);
@@ -163,7 +196,7 @@ ok((await one(`select count(*)::int n from public.habits`)).n === 5, 'A ve solo 
 await as(B);
 ok((await one(`select count(*)::int n from public.projects`)).n === 0, 'B no ve los proyectos de A');
 ok((await one(`select count(*)::int n from public.tasks`)).n === 0, 'B no ve las tareas de A');
-ok((await one(`select count(*)::int n from public.transactions`)).n === 1, 'B solo ve su propio movimiento');
+ok((await one(`select count(*)::int n from public.transactions`)).n === 2, 'B solo ve sus propios 2 movimientos');
 ok((await one(`select count(*)::int n from public.habit_logs`)).n === 0, 'B no ve el historial de hábitos de A');
 ok((await db.query(`update public.projects set name = 'hackeado' where id = $1`, [pA.id])).affectedRows === 0, 'B no puede modificar un proyecto de A');
 ok((await db.query(`delete from public.transactions where user_id = $1`, [A])).affectedRows === 0, 'B no puede borrar movimientos de A');

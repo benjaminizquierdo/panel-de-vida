@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "panel": "node --env-file=.env.local scripts/panel.mjs",
     "test:db": "node tests/schema.test.mjs",
-    "test:assistant": "npx -y deno run --config supabase/functions/assistant/deno.json --allow-net --allow-env --allow-read tests/assistant.test.ts"
+    "test:assistant": "npx -y deno run --config supabase/functions/assistant/deno.json --allow-net --allow-env --allow-read tests/assistant.test.ts",
+    "test:importer": "npx -y deno run --no-config --sloppy-imports tests/importer.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

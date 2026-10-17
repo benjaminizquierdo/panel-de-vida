@@ -14,6 +14,11 @@ export interface Backend {
   signOut(): Promise<void>;
   list<T extends TableName>(table: T): Promise<Row<T>[]>;
   insert<T extends TableName>(table: T, row: NewRow<T>): Promise<Row<T>>;
+  /**
+   * Inserta varias filas de una vez. Con `skipDuplicates`, las que repiten (user_id, source,
+   * external_id) se ignoran en silencio (importaciones). Devuelve cuántas se han insertado.
+   */
+  insertMany<T extends TableName>(table: T, rows: NewRow<T>[], options?: { skipDuplicates?: boolean }): Promise<number>;
   update<T extends TableName>(table: T, id: string, patch: Partial<NewRow<T>>): Promise<void>;
   remove(table: TableName, id: string): Promise<void>;
   /** Pasa los movimientos (y subcategorías) de una categoría a otra del mismo tipo y la borra. Devuelve los movimientos movidos. */
