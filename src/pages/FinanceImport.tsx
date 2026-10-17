@@ -20,7 +20,7 @@ import {
 import { toast } from '../lib/toast';
 import type { FinanceCategory, NewRow, Transaction, TxType } from '../lib/types';
 import { useTable } from '../lib/useTable';
-import { eur, fmtDate } from '../lib/utils';
+import { eur, fmtDate, fmtMonth, monthKey } from '../lib/utils';
 
 type Source = 'trade_republic' | 'csv';
 
@@ -196,6 +196,59 @@ function MappingStep({ step, onBack, onChange, onContinue }: {
 
 const merchantKey = (row: ImportRow) => `${txType(row)}|${normalizeMerchant(row.merchant)}`;
 
+type Grouping = 'tipo' | 'mes' | 'lista';
+
+const GROUPING_LABEL: Record<Grouping, string> = { tipo: 'Por tipo', mes: 'Por mes y tipo', lista: 'Sin agrupar' };
+const GROUPING_KEY = 'pv:import-grouping';
+
+const savedGrouping = (): Grouping => {
+  try {
+    const v = localStorage.getItem(GROUPING_KEY);
+    return v === 'mes' || v === 'lista' ? v : 'tipo';
+  } catch {
+    return 'tipo';
+  }
+};
+
+interface RowGroup {
+  id: string;
+  label: string;
+  /** Tipo de operación original (Trade Republic), si el nombre legible es distinto. */
+  code?: string;
+  rows: ImportRow[];
+  children?: RowGroup[];
+}
+
+/** Por tipo de operación, de más a menos movimientos. */
+function byType(rows: ImportRow[], label: (group: string) => string, prefix = ''): RowGroup[] {
+  const m = new Map<string, ImportRow[]>();
+  for (const r of rows) {
+    const list = m.get(r.group);
+    if (list) list.push(r);
+    else m.set(r.group, [r]);
+  }
+  return [...m]
+    .map(([group, list]) => ({ id: `${prefix}${group}`, label: label(group), code: label(group) !== group ? group : undefined, rows: list }))
+    .sort((a, b) => b.rows.length - a.rows.length);
+}
+
+/** Las filas llegan ordenadas de más reciente a más antigua, así que los meses también. */
+function groupRows(rows: ImportRow[], grouping: Grouping, label: (group: string) => string): RowGroup[] {
+  if (grouping === 'tipo') return byType(rows, label);
+  if (grouping === 'lista') return [];
+  const months = new Map<string, ImportRow[]>();
+  for (const r of rows) {
+    const key = monthKey(r.date);
+    const list = months.get(key);
+    if (list) list.push(r);
+    else months.set(key, [r]);
+  }
+  return [...months].map(([key, list]) => {
+    const name = fmtMonth(key);
+    return { id: key, label: name[0].toUpperCase() + name.slice(1), rows: list, children: byType(list, label, `${key}|`) };
+  });
+}
+
 function PreviewStep({ step, categories, transactions, onBack, onDone }: {
   step: Extract<Step, { kind: 'preview' }>;
   categories: FinanceCategory[];
@@ -237,16 +290,23 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
   );
   const categoryOf = (r: ImportRow) => chosen.get(merchantKey(r)) ?? suggested.get(r.key) ?? fallback[txType(r)];
 
-  const groups = useMemo(() => {
-    const m = new Map<string, { rows: ImportRow[]; total: number }>();
-    for (const r of rows) {
-      const g = m.get(r.group) ?? { rows: [], total: 0 };
-      g.rows.push(r);
-      g.total += r.amount;
-      m.set(r.group, g);
+  const [grouping, setGroupingState] = useState<Grouping>(savedGrouping);
+  const setGrouping = (g: Grouping) => {
+    setGroupingState(g);
+    setOpen(new Set());
+    try {
+      localStorage.setItem(GROUPING_KEY, g);
+    } catch {
+      // sin almacenamiento (modo privado): solo no se recuerda
     }
-    return [...m.entries()].sort((a, b) => b[1].rows.length - a[1].rows.length);
-  }, [rows]);
+  };
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const groups = useMemo(
+    () => groupRows(rows, grouping, source === 'trade_republic' ? groupLabel : (group) => group),
+    [rows, grouping, source],
+  );
+  const allGroupIds = groups.flatMap((g) => [g.id, ...(g.children ?? []).map((c) => c.id)]);
+  const allOpen = allGroupIds.length > 0 && allGroupIds.every((id) => open.has(id));
 
   const toggle = (keys: string[], on: boolean) =>
     setIncluded((prev) => {
@@ -308,6 +368,111 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
     }
   };
 
+  /** Casilla que marca o desmarca varias filas (todas, un grupo); a medias si solo hay algunas. Los ya importados no cuentan. */
+  const selectionCheck = (groupRows: ImportRow[], text: string, label: string) => {
+    const keys = groupRows.map((r) => r.key).filter((k) => !existing.has(k));
+    const on = keys.filter((k) => included.has(k)).length;
+    return (
+      <label className="check small">
+        <input
+          type="checkbox"
+          checked={keys.length > 0 && on === keys.length}
+          ref={(el) => {
+            if (el) el.indeterminate = on > 0 && on < keys.length;
+          }}
+          disabled={keys.length === 0}
+          onChange={(e) => toggle(keys, e.target.checked)}
+          aria-label={label}
+        />
+        {text}
+      </label>
+    );
+  };
+
+  const renderRow = (r: ImportRow, showGroup: boolean) => {
+    const dup = existing.has(r.key);
+    const type = txType(r);
+    return (
+      <li key={r.key} className={`import-row ${dup ? 'is-dup' : ''} ${included.has(r.key) && !dup ? '' : 'is-off'}`}>
+        <input
+          type="checkbox"
+          checked={included.has(r.key) && !dup}
+          disabled={dup}
+          onChange={(e) => toggle([r.key], e.target.checked)}
+          aria-label={`Importar ${r.text} del ${fmtDate(r.date)}`}
+        />
+        <span className="import-desc">
+          <strong>{r.text}</strong>
+          <span className="muted small">
+            {fmtDate(r.date)}
+            {showGroup && source === 'trade_republic' && ` · ${groupLabel(r.group)}`}
+            {dup && ' · ya importado'}
+          </span>
+        </span>
+        <span className={`tx-amount ${type}`}>{eur(r.amount)}</span>
+        <select
+          className="import-cat"
+          value={categoryOf(r)}
+          disabled={dup}
+          onChange={(e) => setChosen((prev) => new Map(prev).set(merchantKey(r), e.target.value))}
+          aria-label={`Categoría de ${r.text}`}
+        >
+          {categoryOptions(categories, type).map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </li>
+    );
+  };
+
+  const renderGroup = (g: RowGroup) => {
+    const isOpen = open.has(g.id);
+    const total = g.rows.reduce((s, r) => s + r.amount, 0);
+    const picked = g.rows.filter((r) => included.has(r.key) && !existing.has(r.key)).length;
+    const dups = g.rows.filter((r) => existing.has(r.key)).length;
+    return (
+      <li key={g.id} className={`import-group ${g.children ? '' : 'is-leaf'}`}>
+        <div className="import-group-head">
+          {selectionCheck(g.rows, '', `Importar todo: ${g.label}`)}
+          <button
+            type="button"
+            className="import-group-toggle"
+            aria-expanded={isOpen}
+            onClick={() =>
+              setOpen((prev) => {
+                const next = new Set(prev);
+                if (isOpen) next.delete(g.id);
+                else next.add(g.id);
+                return next;
+              })
+            }
+          >
+            <span className="import-group-title">
+              <strong>{g.label}</strong>
+              <span className="muted small">
+                {g.rows.length} {g.rows.length === 1 ? 'movimiento' : 'movimientos'} · {picked} {picked === 1 ? 'marcado' : 'marcados'}
+                {dups > 0 && ` · ${dups} ya importados`}
+                {g.code && ` · ${g.code}`}
+              </span>
+            </span>
+            <span className={`tx-amount ${total < 0 ? 'gasto' : 'ingreso'}`}>{eur(total)}</span>
+            <span className="chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        </div>
+        {isOpen &&
+          (g.children ? (
+            <ul className="import-groups nested">{g.children.map((c) => renderGroup(c))}</ul>
+          ) : (
+            <ul className="import-list">{g.rows.map((r) => renderRow(r, false))}</ul>
+          ))}
+      </li>
+    );
+  };
+
   return (
     <div className="stack">
       <Card
@@ -335,38 +500,6 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
           </details>
         )}
 
-        <div className="stack">
-          <strong className="small">Qué importar</strong>
-          <ul className="group-list">
-            {groups.map(([group, g]) => {
-              const keys = g.rows.map((r) => r.key).filter((k) => !existing.has(k));
-              const on = keys.filter((k) => included.has(k)).length; // keys ya excluye los importados
-              return (
-                <li key={group}>
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={keys.length > 0 && on === keys.length}
-                      ref={(el) => {
-                        if (el) el.indeterminate = on > 0 && on < keys.length;
-                      }}
-                      disabled={keys.length === 0}
-                      onChange={(e) => toggle(keys, e.target.checked)}
-                    />
-                    <span>
-                      {source === 'trade_republic' ? groupLabel(group) : group}{' '}
-                      <span className="muted small">
-                        {g.rows.length} · {eur(g.total)}
-                        {source === 'trade_republic' && ` · ${group}`}
-                      </span>
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-
         <div className="field-row">
           {(['gasto', 'ingreso'] as const).map((t) => (
             <label key={t} className="field">
@@ -385,48 +518,32 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
 
       <Card title="Movimientos">
         <p className="muted small">
-          La categoría se propone por tus reglas o por el tipo de comercio. Si cambias la de un comercio, se aplica a todos sus
-          movimientos.
+          Marca qué importar, uno a uno o por grupos. La categoría se propone por tus reglas o por el tipo de comercio; si cambias
+          la de un comercio, se aplica a todos sus movimientos.
         </p>
-        <ul className="import-list">
-          {rows.map((r) => {
-            const dup = existing.has(r.key);
-            const type = txType(r);
-            return (
-              <li key={r.key} className={`import-row ${dup ? 'is-dup' : ''} ${included.has(r.key) && !dup ? '' : 'is-off'}`}>
-                <input
-                  type="checkbox"
-                  checked={included.has(r.key) && !dup}
-                  disabled={dup}
-                  onChange={(e) => toggle([r.key], e.target.checked)}
-                  aria-label={`Importar ${r.text} del ${fmtDate(r.date)}`}
-                />
-                <span className="import-desc">
-                  <strong>{r.text}</strong>
-                  <span className="muted small">
-                    {fmtDate(r.date)}
-                    {source === 'trade_republic' && ` · ${groupLabel(r.group)}`}
-                    {dup && ' · ya importado'}
-                  </span>
-                </span>
-                <span className={`tx-amount ${type}`}>{eur(r.amount)}</span>
-                <select
-                  className="import-cat"
-                  value={categoryOf(r)}
-                  disabled={dup}
-                  onChange={(e) => setChosen((prev) => new Map(prev).set(merchantKey(r), e.target.value))}
-                  aria-label={`Categoría de ${r.text}`}
-                >
-                  {categoryOptions(categories, type).map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="import-toolbar">
+          <div className="segmented" role="group" aria-label="Agrupar movimientos">
+            {(Object.keys(GROUPING_LABEL) as Grouping[]).map((g) => (
+              <button key={g} type="button" aria-pressed={grouping === g} onClick={() => setGrouping(g)}>
+                {GROUPING_LABEL[g]}
+              </button>
+            ))}
+          </div>
+          <div className="row">
+            {selectionCheck(rows, 'Todos', 'Seleccionar todos los movimientos')}
+            {grouping !== 'lista' && (
+              <button type="button" className="link-btn" onClick={() => setOpen(allOpen ? new Set() : new Set(allGroupIds))}>
+                {allOpen ? 'Contraer todo' : 'Desplegar todo'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {grouping === 'lista' ? (
+          <ul className="import-list">{rows.map((r) => renderRow(r, true))}</ul>
+        ) : (
+          <ul className="import-groups">{groups.map((g) => renderGroup(g))}</ul>
+        )}
       </Card>
 
       <div className="import-bar card">

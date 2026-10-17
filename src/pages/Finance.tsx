@@ -3,14 +3,14 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { Card, confirmDelete, Empty, IconButton, Progress, Stat } from '../components/ui';
 import { categoryOptions, categoryPath, categoryTree, topLevelId } from '../lib/categories';
 import { toast } from '../lib/toast';
-import type { Budget, FinanceCategory, Frequency, NewRow, TxType } from '../lib/types';
+import type { Budget, FinanceCategory, NewRow, TxType } from '../lib/types';
 import { tooltipStyle, useChartColors } from '../lib/useChartColors';
 import { useTable } from '../lib/useTable';
 import { addMonths, eur, fmtDate, fmtMonth, fmtMonthShort, monthKey, parseNum, pct, sumBy, today } from '../lib/utils';
-import { FREQUENCY_LABEL, scheduleFrom } from '../lib/recurring';
+import { FREQUENCY_LABEL } from '../lib/recurring';
 import FinanceCategories from './FinanceCategories';
 import FinanceImport from './FinanceImport';
-import FinanceRecurring, { runRecurring } from './FinanceRecurring';
+import FinanceRecurring, { newScheduleDraft, runRecurring, ScheduleFields, scheduleError, scheduleOf, type ScheduleDraft } from './FinanceRecurring';
 
 type View = 'resumen' | 'periodicos' | 'categorias' | 'importar';
 
@@ -241,8 +241,16 @@ function NewTransaction({ categories, onAdd, onAddRecurring, onManage }: {
   const [categoryId, setCategoryId] = useState('');
   const [date, setDate] = useState(today());
   const [note, setNote] = useState('');
-  const [repeat, setRepeat] = useState<Frequency | ''>('');
+  const [periodic, setPeriodic] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleDraft>(newScheduleDraft);
   const selectId = useId();
+
+  const togglePeriodic = (on: boolean) => {
+    // La fecha ya elegida pasa a ser la primera del periódico.
+    if (on) setSchedule((s) => ({ ...s, date }));
+    else setDate(schedule.date);
+    setPeriodic(on);
+  };
 
   const options = categoryOptions(categories, type);
   // Si la elegida ya no vale (cambio de tipo, archivada, aún sin cargar), se usa la primera.
@@ -259,22 +267,29 @@ function NewTransaction({ categories, onAdd, onAddRecurring, onManage }: {
       toast(`Crea antes una categoría de ${type === 'gasto' ? 'gastos' : 'ingresos'}`, 'error');
       return;
     }
+    const invalid = periodic && scheduleError(schedule);
+    if (invalid) {
+      toast(invalid, 'error');
+      return;
+    }
     const base = { type, amount: Math.round(value * 100) / 100, category_id: selected, note: note.trim() };
-    // Con «Repetir», no se apunta a mano: se crea el periódico y él genera el movimiento de esa fecha.
-    const created = repeat
+    // Si es periódico no se apunta a mano: se crea el periódico y él genera el movimiento de esa fecha.
+    const created = periodic
       ? await onAddRecurring({
           ...base,
           note: base.note || (categories.find((cat) => cat.id === selected)?.name ?? 'Periódico'),
-          frequency: repeat,
-          ...scheduleFrom(date),
-          end_date: null,
+          ...scheduleOf(schedule),
           active: true,
         })
       : await onAdd({ ...base, date });
     if (created) {
       setAmount('');
       setNote('');
-      setRepeat('');
+      if (periodic) {
+        setDate(schedule.date);
+        setSchedule(newScheduleDraft());
+        setPeriodic(false);
+      }
     }
   };
 
@@ -294,10 +309,12 @@ function NewTransaction({ categories, onAdd, onAddRecurring, onManage }: {
             <span>Importe (€)</span>
             <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" required />
           </label>
-          <label className="field">
-            <span>Fecha</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value || today())} />
-          </label>
+          {!periodic && (
+            <label className="field">
+              <span>Fecha</span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value || today())} />
+            </label>
+          )}
         </div>
         {/* El botón va fuera del <label>: dentro, la etiqueta apuntaría al botón y no al selector. */}
         <div className="field">
@@ -315,24 +332,27 @@ function NewTransaction({ categories, onAdd, onAddRecurring, onManage }: {
             ))}
           </select>
         </div>
-        <div className="field-row">
-          <label className="field">
-            <span>Nota</span>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={repeat ? 'Concepto: Netflix, alquiler…' : 'Opcional'} />
-          </label>
-          <label className="field">
-            <span>Repetir</span>
-            <select value={repeat} onChange={(e) => setRepeat(e.target.value as Frequency | '')}>
-              <option value="">No</option>
-              {(Object.keys(FREQUENCY_LABEL) as Frequency[]).map((f) => (
-                <option key={f} value={f}>
-                  {FREQUENCY_LABEL[f]}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <button className="btn primary">{repeat ? `Crear ${type} periódico` : `Añadir ${type}`}</button>
+        <label className="field">
+          <span>{periodic ? 'Concepto' : 'Nota'}</span>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={120}
+            placeholder={periodic ? (type === 'gasto' ? 'Netflix, alquiler, gimnasio…' : 'Nómina, alquiler cobrado…') : 'Opcional'}
+          />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={periodic} onChange={(e) => togglePeriodic(e.target.checked)} />
+          <span>
+            Es periódico <span className="muted small">(suscripción, alquiler, nómina…)</span>
+          </span>
+        </label>
+        {periodic && (
+          <div className="subpanel stack">
+            <ScheduleFields value={schedule} onChange={setSchedule} />
+          </div>
+        )}
+        <button className="btn primary">{periodic ? `Crear ${type} periódico` : `Añadir ${type}`}</button>
       </form>
     </Card>
   );

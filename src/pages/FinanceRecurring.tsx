@@ -4,7 +4,7 @@ import Sheet from '../components/Sheet';
 import { Card, confirmDelete, Empty, IconButton, Stat } from '../components/ui';
 import { categoryOptions, categoryPath } from '../lib/categories';
 import { notifyDataChanged } from '../lib/events';
-import { describeSchedule, dueDates, firstOnOrAfter, FREQUENCY_LABEL, monthlyAmount, scheduleFrom } from '../lib/recurring';
+import { describeSchedule, dueDates, firstOnOrAfter, monthlyAmount, scheduleFrom } from '../lib/recurring';
 import { toast } from '../lib/toast';
 import type { FinanceCategory, Frequency, NewRow, RecurringTransaction, TxType } from '../lib/types';
 import type { TableApi } from '../lib/useTable';
@@ -145,6 +145,76 @@ export default function FinanceRecurring({ categories, recurring }: {
   );
 }
 
+/** Lo que se edita del calendario de un periódico, antes de convertirlo en columnas. */
+export interface ScheduleDraft {
+  frequency: Frequency;
+  /** Primera fecha (al crear) o próxima (al editar). */
+  date: string;
+  hasEnd: boolean;
+  endDate: string;
+}
+
+export const newScheduleDraft = (date = today()): ScheduleDraft => ({ frequency: 'mensual', date, hasEnd: false, endDate: '' });
+
+/** Columnas del periódico a partir del borrador. */
+export const scheduleOf = (d: ScheduleDraft) => ({
+  frequency: d.frequency,
+  ...scheduleFrom(d.date),
+  end_date: d.hasEnd && d.endDate ? d.endDate : null,
+});
+
+export const scheduleError = (d: ScheduleDraft) =>
+  d.hasEnd && d.endDate && d.endDate < d.date ? 'La fecha de fin no puede ser anterior a la primera' : null;
+
+const FREQUENCY_SHORT: Record<Frequency, string> = { semanal: 'Semanal', mensual: 'Mensual', anual: 'Anual' };
+
+/** Frecuencia, fecha y fin opcional. Lo comparten el editor de periódicos y el formulario de nuevo movimiento. */
+export function ScheduleFields({ value, onChange, dateLabel = 'Primera fecha', countPending = true }: {
+  value: ScheduleDraft;
+  onChange: (v: ScheduleDraft) => void;
+  dateLabel?: string;
+  /** Avisar de cuántos movimientos se crearán al guardarlo (solo al crear). */
+  countPending?: boolean;
+}) {
+  const set = (patch: Partial<ScheduleDraft>) => onChange({ ...value, ...patch });
+  const schedule = scheduleOf(value);
+  const pending = countPending ? dueDates(schedule, today()).dates.length : 0;
+
+  return (
+    <>
+      <div className="field">
+        <span>Frecuencia</span>
+        <div className="segmented" role="group" aria-label="Frecuencia">
+          {(Object.keys(FREQUENCY_SHORT) as Frequency[]).map((f) => (
+            <button key={f} type="button" aria-pressed={value.frequency === f} onClick={() => set({ frequency: f })}>
+              {FREQUENCY_SHORT[f]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="field">
+        <span>{dateLabel}</span>
+        <input type="date" value={value.date} onChange={(e) => set({ date: e.target.value || today() })} />
+        <span className="muted small">
+          {describeSchedule(schedule)}.
+          {pending > 0 && ` Al crearlo se apuntará${pending === 1 ? ' el de esta fecha' : `n ${pending} movimientos (desde esta fecha hasta hoy)`}.`}
+          {countPending && pending === 0 && ' El primero se apuntará ese día.'}
+        </span>
+      </label>
+      <label className="check small">
+        <input type="checkbox" checked={value.hasEnd} onChange={(e) => set({ hasEnd: e.target.checked })} />
+        Termina en una fecha (préstamo, cuotas…)
+      </label>
+      {value.hasEnd && (
+        <label className="field">
+          <span>Último</span>
+          <input type="date" value={value.endDate} min={value.date} onChange={(e) => set({ endDate: e.target.value })} />
+        </label>
+      )}
+    </>
+  );
+}
+
 function RecurringEditor({ editing, categories, onClose, onCreate, onUpdate, onDelete }: {
   editing: Editing;
   categories: FinanceCategory[];
@@ -158,16 +228,15 @@ function RecurringEditor({ editing, categories, onClose, onCreate, onUpdate, onD
   const [amount, setAmount] = useState(rule ? String(rule.amount) : '');
   const [note, setNote] = useState(rule?.note ?? '');
   const [categoryId, setCategoryId] = useState(rule?.category_id ?? '');
-  const [frequency, setFrequency] = useState<Frequency>(rule?.frequency ?? 'mensual');
-  const [date, setDate] = useState(rule?.next_date ?? today());
-  const [hasEnd, setHasEnd] = useState(!!rule?.end_date);
-  const [endDate, setEndDate] = useState(rule?.end_date ?? '');
+  const [draft, setDraft] = useState<ScheduleDraft>(
+    rule
+      ? { frequency: rule.frequency, date: rule.next_date, hasEnd: !!rule.end_date, endDate: rule.end_date ?? '' }
+      : newScheduleDraft(),
+  );
   const [busy, setBusy] = useState(false);
 
   const options = categoryOptions(categories, type);
   const selected = options.some((o) => o.id === categoryId) ? categoryId : (options[0]?.id ?? '');
-  const schedule = { frequency, ...scheduleFrom(date), end_date: hasEnd && endDate ? endDate : null };
-  const pending = rule ? 0 : dueDates(schedule, today()).dates.length;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -175,22 +244,17 @@ function RecurringEditor({ editing, categories, onClose, onCreate, onUpdate, onD
     if (value === null || value <= 0) return toast('El importe tiene que ser mayor que 0', 'error');
     if (!note.trim()) return toast('Ponle un concepto, por ejemplo «Netflix»', 'error');
     if (!selected) return toast('Elige una categoría', 'error');
-    if (schedule.end_date && schedule.end_date < date) return toast('La fecha de fin no puede ser anterior a la primera', 'error');
+    const invalid = scheduleError(draft);
+    if (invalid) return toast(invalid, 'error');
     setBusy(true);
-    const values = {
-      type,
-      amount: Math.round(value * 100) / 100,
-      note: note.trim(),
-      category_id: selected,
-      frequency,
-      end_date: schedule.end_date,
-    };
+    const { anchor_day, anchor_month, next_date, ...schedule } = scheduleOf(draft);
+    const values = { type, amount: Math.round(value * 100) / 100, note: note.trim(), category_id: selected, ...schedule };
     if (rule) {
       // Solo se recalcula el calendario si se ha cambiado la fecha o la frecuencia.
-      const scheduleChanged = date !== rule.next_date || frequency !== rule.frequency;
-      await onUpdate(rule.id, scheduleChanged ? { ...values, ...scheduleFrom(date) } : values);
+      const scheduleChanged = draft.date !== rule.next_date || draft.frequency !== rule.frequency;
+      await onUpdate(rule.id, scheduleChanged ? { ...values, anchor_day, anchor_month, next_date } : values);
     } else {
-      await onCreate({ ...values, ...scheduleFrom(date), active: true });
+      await onCreate({ ...values, anchor_day, anchor_month, next_date, active: true });
     }
     setBusy(false);
   };
@@ -230,44 +294,17 @@ function RecurringEditor({ editing, categories, onClose, onCreate, onUpdate, onD
             <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" required />
           </label>
           <label className="field">
-            <span>Frecuencia</span>
-            <select value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)}>
-              {(Object.keys(FREQUENCY_LABEL) as Frequency[]).map((f) => (
-                <option key={f} value={f}>
-                  {FREQUENCY_LABEL[f]}
+            <span>Categoría</span>
+            <select value={selected} onChange={(e) => setCategoryId(e.target.value)}>
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
                 </option>
               ))}
             </select>
           </label>
         </div>
-        <label className="field">
-          <span>Categoría</span>
-          <select value={selected} onChange={(e) => setCategoryId(e.target.value)}>
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>{rule ? 'Próxima fecha' : 'Primera fecha'}</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value || today())} />
-          <span className="muted small">
-            {describeSchedule(schedule)}.
-            {pending > 0 && ` Al crearlo se apuntará${pending === 1 ? ' el de esta fecha' : `n ${pending} movimientos (desde esta fecha hasta hoy)`}.`}
-          </span>
-        </label>
-        <label className="check small">
-          <input type="checkbox" checked={hasEnd} onChange={(e) => setHasEnd(e.target.checked)} />
-          Termina en una fecha (préstamo, cuotas…)
-        </label>
-        {hasEnd && (
-          <label className="field">
-            <span>Último</span>
-            <input type="date" value={endDate} min={date} onChange={(e) => setEndDate(e.target.value)} />
-          </label>
-        )}
+        <ScheduleFields value={draft} onChange={setDraft} dateLabel={rule ? 'Próxima fecha' : 'Primera fecha'} countPending={!rule} />
       </form>
     </Sheet>
   );

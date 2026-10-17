@@ -1461,13 +1461,117 @@ select.sm {
   padding-left: 1.2rem;
 }
 
-.group-list {
+/* Opciones que se despliegan dentro de un formulario (p. ej. «Es periódico»). */
+.subpanel {
+  padding: 0.85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.subpanel .segmented {
+  background: var(--surface);
+}
+
+/* ---------- Importación: agrupaciones desplegables ---------- */
+
+.import-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+}
+
+.import-toolbar .segmented button {
+  padding-inline: 0.8rem;
+  white-space: nowrap;
+}
+
+.import-toolbar .row {
+  gap: 1rem;
+}
+
+.import-groups {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.import-groups.nested {
+  gap: 0.35rem;
+  padding: 0.5rem 0 0.25rem 1rem;
+}
+
+.import-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.import-groups.nested .import-group {
+  border-style: dashed;
+}
+
+.import-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+}
+
+.import-group-head .check {
+  flex: none;
+}
+
+.import-group-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.import-group-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.import-group-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+[aria-expanded='true'] > .chevron {
+  transform: rotate(90deg);
+}
+
+.import-group > .import-list,
+.import-group > .import-groups.nested {
+  padding-right: 0.7rem;
+}
+
+.import-group > .import-list {
+  padding-left: 0.7rem;
+  border-top: 1px solid var(--border);
 }
 
 .import-list {

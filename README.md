@@ -65,14 +65,15 @@ Netlify o Cloudflare Pages funcionan igual: comando de build `npm run build`, ca
 
 En **Finanzas → Importar** se sube un CSV; se lee en el navegador y no se guarda nada hasta confirmar.
 
-- **Trade Republic** se reconoce por su cabecera (export oficial de transacciones). La compraventa de valores viene desmarcada (no es gasto ni ingreso); el resto se agrupa por tipo de operación para incluir o excluir en bloque.
+- **Trade Republic** se reconoce por su cabecera (export oficial de transacciones). La compraventa de valores viene desmarcada (no es gasto ni ingreso).
+- **Agrupaciones**: la vista previa muestra los movimientos en desplegables **por tipo** de operación, **por mes y tipo** o **sin agrupar** (se recuerda la última elegida). Cada grupo tiene su casilla para incluirlo o excluirlo entero, y dentro se sigue pudiendo marcar o desmarcar cada movimiento.
 - **Otros bancos**: se adivinan las columnas de fecha, importe y descripción por su nombre y se pueden corregir; hay opción de invertir el signo para bancos que exportan los gastos en positivo. Entiende «1.234,56», «-12.50», fechas DD/MM/AAAA, etc.
 - **Categorías propuestas**: primero tus reglas («si el comercio contiene X → categoría Y»), después el **código MCC** del pago con tarjeta (5411 supermercado, 5812 restaurante, 4899 suscripciones…). Si cambias la categoría de un comercio en la vista previa, se aplica a todos sus movimientos y se recuerda para la próxima importación.
 - **Sin duplicados**: cada movimiento importado guarda su origen y su identificador (`transaction_id` en Trade Republic; en otros bancos, fecha + importe + texto). Reimportar el mismo archivo salta lo ya guardado; lo garantiza una restricción única en la base de datos (migración 004).
 
 ## Movimientos periódicos
 
-En **Finanzas → Periódicos** (o con «Repetir» al añadir un movimiento) se crea un gasto o ingreso que se repite **cada semana, mes o año**, con fecha de fin opcional. La vista muestra los gastos e ingresos fijos al mes y permite pausar, editar o eliminar cada uno; eliminarlo conserva los movimientos ya creados.
+En **Finanzas → Periódicos** (o marcando «Es periódico» al añadir un movimiento, que despliega frecuencia, primera fecha y fin) se crea un gasto o ingreso que se repite **cada semana, mes o año**, con fecha de fin opcional. La vista muestra los gastos e ingresos fijos al mes y permite pausar, editar o eliminar cada uno; eliminarlo conserva los movimientos ya creados.
 
 - **Se generan solos**: una tarea diaria de `pg_cron` en Supabase (04:10 UTC) crea los que tocan, y la app hace lo mismo al iniciar sesión como respaldo. Si `pg_cron` no está disponible en tu proyecto, la migración 005 sigue adelante y solo queda la vía de la app.
 - **Calendario**: un mensual del día 31 cae el último día de los meses cortos; un anual del 29 de febrero, el 28 en años no bisiestos. Al crear uno con fecha pasada se apuntan los periodos pendientes; al reanudar uno pausado, no.
