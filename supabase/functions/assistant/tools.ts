@@ -20,8 +20,10 @@ export interface ToolContext {
 type Input = Record<string, unknown>;
 
 // ---------------------------------------------------------------- Esquemas
-// strict: true exige que todas las propiedades sean obligatorias; los campos
-// opcionales se expresan como «valor o null».
+// strict: true exige que todas las propiedades sean obligatorias. Los textos y
+// fechas opcionales usan la cadena vacía como «sin valor»; solo números,
+// booleanos y enums son «valor o null». La API admite como mucho 16 parámetros
+// de tipo unión entre todas las herramientas strict (tests/assistant.test.ts lo vigila).
 
 type Schema = Record<string, unknown>;
 const str = (description: string): Schema => ({ type: 'string', description });
@@ -30,6 +32,8 @@ const int = (description: string): Schema => ({ type: 'integer', description });
 const bool = (description: string): Schema => ({ type: 'boolean', description });
 const oneOf = (values: string[], description: string): Schema => ({ type: 'string', enum: values, description });
 const date = (description: string) => str(`${description}. Formato AAAA-MM-DD.`);
+const optText = (description: string) => str(`${description}; cadena vacía si no aplica`);
+const optDate = (description: string) => str(`${description}. Formato AAAA-MM-DD, o cadena vacía si no aplica.`);
 const nullable = (schema: Schema): Schema => ({ anyOf: [schema, { type: 'null' }] });
 const object = (properties: Record<string, Schema>): Anthropic.Beta.BetaTool.InputSchema => ({
   type: 'object',
@@ -85,7 +89,7 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
       energia: nullable(int('Nivel de energía de 1 (agotado) a 5 (a tope)')),
       minutos_ejercicio_sumar: nullable(int('Minutos de ejercicio que añadir a los del día')),
       peso: nullable(num('Peso en kg')),
-      nota: nullable(str('Nota breve sobre cómo se ha sentido')),
+      nota: optText('Nota breve sobre cómo se ha sentido'),
     }),
   },
   {
@@ -94,21 +98,22 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
     strict: true,
     input_schema: object({
       titulo: str('Título de la tarea'),
-      proyecto_id: nullable(str('id del proyecto, o null si es una tarea suelta')),
+      proyecto_id: optText('id del proyecto (vacío si es una tarea suelta)'),
       prioridad: oneOf(['alta', 'media', 'baja'], 'Prioridad; media si no se indica'),
-      fecha_limite: nullable(date('Fecha límite')),
+      fecha_limite: optDate('Fecha límite'),
     }),
   },
   {
     name: 'actualizar_tarea',
-    description: 'Cambia una tarea existente: estado (p. ej. marcarla como hecha), prioridad, fecha límite o título. Solo cambia los campos que no son null.',
+    description:
+      'Cambia una tarea existente: estado (p. ej. marcarla como hecha), prioridad, fecha límite o título. Solo cambia los campos que no son null ni vacíos.',
     strict: true,
     input_schema: object({
       tarea_id: str('id de la tarea'),
       estado: nullable(oneOf(['pendiente', 'en_curso', 'hecha'], 'Nuevo estado')),
       prioridad: nullable(oneOf(['alta', 'media', 'baja'], 'Nueva prioridad')),
-      fecha_limite: nullable(date('Nueva fecha límite')),
-      titulo: nullable(str('Nuevo título')),
+      fecha_limite: optDate('Nueva fecha límite'),
+      titulo: optText('Nuevo título'),
     }),
   },
   {
@@ -130,7 +135,7 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
       area: oneOf(['proyectos', 'salud', 'finanzas', 'personal'], 'Área de vida'),
       meta: num('Valor numérico que hay que alcanzar, mayor que 0'),
       unidad: str('Unidad de la meta (km, €, libros…); cadena vacía si no tiene'),
-      fecha_limite: nullable(date('Fecha límite')),
+      fecha_limite: optDate('Fecha límite'),
     }),
   },
   {
@@ -145,11 +150,11 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: 'fijar_destacado',
-    description: 'Fija «lo más importante del día» o lo marca como hecho. Solo cambia los campos que no son null.',
+    description: 'Fija «lo más importante del día» o lo marca como hecho. Solo cambia los campos que no son null ni vacíos.',
     strict: true,
     input_schema: object({
       fecha: date('Día'),
-      texto: nullable(str('La tarea más importante del día')),
+      texto: optText('La tarea más importante del día'),
       hecho: nullable(bool('Si ya está hecha')),
     }),
   },
@@ -160,8 +165,8 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
     strict: true,
     input_schema: object({
       tabla: oneOf(Object.keys(QUERYABLE), 'Qué datos leer'),
-      desde: nullable(date('Primer día del periodo (incluido)')),
-      hasta: nullable(date('Último día del periodo (incluido)')),
+      desde: optDate('Primer día del periodo (incluido)'),
+      hasta: optDate('Último día del periodo (incluido)'),
     }),
   },
 ];
@@ -185,8 +190,9 @@ const text = (v: unknown, field: string) => {
   return v.trim();
 };
 
+/** Fecha opcional: null, undefined o cadena vacía significan «sin fecha». */
 const optionalDate = (v: unknown, field: string) => {
-  if (v === null || v === undefined) return null;
+  if (v === null || v === undefined || v === '') return null;
   if (!isDate(v)) throw new Error(`«${field}» debe tener formato AAAA-MM-DD`);
   return v;
 };
@@ -289,7 +295,7 @@ const handlers: Record<string, (input: Input, ctx: ToolContext) => Promise<unkno
         .from('tasks')
         .insert({
           title,
-          project_id: input.proyecto_id ?? null,
+          project_id: input.proyecto_id || null,
           priority,
           status: 'pendiente',
           due_date: optionalDate(input.fecha_limite, 'fecha_limite'),

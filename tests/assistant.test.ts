@@ -160,6 +160,11 @@ ok((b.thinking as Row)?.type === 'adaptive' && ((b.thinking as Row).block_bindin
 ok((b.output_config as Row)?.effort === 'low', 'esfuerzo low');
 ok((b.cache_control as Row)?.type === 'ephemeral', 'caché de prompt activada');
 ok(Array.isArray(b.tools) && (b.tools as Row[]).length === 10 && (b.tools as Row[]).every((t) => t.strict === true), '10 herramientas, todas strict');
+// Límite de la API para herramientas strict: como mucho 16 parámetros con anyOf o type: [..].
+const unions = (b.tools as { input_schema: { properties: Record<string, Row> } }[])
+  .flatMap((t) => Object.values(t.input_schema.properties))
+  .filter((p) => 'anyOf' in p || Array.isArray(p.type)).length;
+ok(unions <= 16, `parámetros de tipo unión dentro del límite de la API (${unions} de 16)`);
 ok(typeof b.system === 'string' && !(b.system as string).includes(TODAY), 'el prompt de sistema no contiene la fecha (estable para la caché)');
 const msgs = b.messages as Row[];
 ok(msgs.length === 2 && msgs[0].role === 'user' && msgs[1].role === 'system', 'el contexto va como mensaje role: system tras el del usuario');
@@ -181,6 +186,27 @@ scripted.push(
   ok(r.status === 200 && d.actions.length === 0, 'un id inexistente no guarda nada');
   ok(results.content[0].is_error === true && String(results.content[0].content).includes('No existe'), 'el error vuelve a Claude como tool_result is_error');
   ok((anthropicRequests.at(-1)!.body.messages as Row[]).length === 5 + 2 + 2, 'el historial anterior se reenvía completo');
+}
+
+// 3b. Campos opcionales vacíos ("") se guardan como null, no como texto
+scripted.push(
+  message(
+    [
+      { type: 'tool_use', id: 'tu_4', name: 'crear_tarea', input: { titulo: 'Llamar al banco', proyecto_id: '', prioridad: 'media', fecha_limite: '' } },
+      { type: 'tool_use', id: 'tu_5', name: 'consultar', input: { tabla: 'movimientos', desde: '', hasta: '' } },
+    ],
+    'tool_use',
+  ),
+  message([{ type: 'text', text: 'Tarea creada.' }], 'end_turn'),
+);
+{
+  const r = await call({ message: 'Apunta llamar al banco', history: [], today: TODAY });
+  const d = await r.json();
+  const task = writes.filter((w) => w.table === 'tasks').at(-1)?.body as Row | undefined;
+  const results = (anthropicRequests.at(-1)!.body.messages as Row[]).at(-1) as { content: Row[] };
+  ok(r.status === 200 && task?.project_id === null && task?.due_date === null, 'proyecto y fecha vacíos se guardan como null');
+  ok(results.content.every((c) => !c.is_error), `consultar sin fechas funciona (${JSON.stringify(results.content.map((c) => c.is_error ?? false))})`);
+  ok(d.actions[0]?.includes('Llamar al banco'), 'describe la tarea creada');
 }
 
 // 4. Historial enorme → se recorta por delante, hasta un turno del usuario
