@@ -1557,6 +1557,14 @@ select.sm {
   box-shadow: 0 0 0 1px var(--border);
 }
 
+.bank-logo.generic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  font-size: 0.9rem;
+}
+
 /* ---------- Importación: agrupaciones desplegables ---------- */
 
 .import-toolbar {

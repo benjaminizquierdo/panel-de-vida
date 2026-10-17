@@ -65,11 +65,12 @@ Netlify o Cloudflare Pages funcionan igual: comando de build `npm run build`, ca
 
 En **Finanzas → Importación movimientos bancarios** se elige el banco y se sube el archivo que exporta; se lee en el navegador y no se guarda nada hasta confirmar.
 
-- **Bancos**: el selector solo ofrece los bancos integrados, cada uno con su logo y sus instrucciones para exportar. Por ahora, **Trade Republic** (export oficial de transacciones en CSV). Si el archivo no es del banco elegido, se avisa. La lista no la puede ampliar el usuario: cada banco se añade en el código (ver *Personalizar*).
-- **Trade Republic**: la compraventa de valores viene desmarcada (no es gasto ni ingreso).
+- **Bancos**: el selector ofrece los bancos integrados, cada uno con su logo y sus instrucciones para exportar (por ahora, **Trade Republic**), y al final **Otro banco (CSV)**. Si el archivo no es del banco elegido, se avisa. La lista no la puede ampliar el usuario: cada banco se añade en el código (ver *Personalizar*).
+- **Trade Republic**: export oficial de transacciones en CSV. La compraventa de valores viene desmarcada (no es gasto ni ingreso).
+- **Otro banco (CSV)**: se adivinan las columnas de fecha, importe y descripción por su nombre y se pueden corregir; hay opción de invertir el signo para bancos que exportan los gastos en positivo. Entiende «1.234,56», «-12.50», fechas DD/MM/AAAA, etc. Si el archivo resulta ser de un banco integrado, se lee con el formato de ese banco.
 - **Agrupaciones**: la vista previa muestra los movimientos en desplegables **por tipo** de operación, **por mes y tipo** o **sin agrupar** (se recuerda la última elegida). Cada grupo tiene su casilla para incluirlo o excluirlo entero, y dentro se sigue pudiendo marcar o desmarcar cada movimiento.
 - **Categorías propuestas**: primero tus reglas («si el comercio contiene X → categoría Y»), después el **código MCC** del pago con tarjeta (5411 supermercado, 5812 restaurante, 4899 suscripciones…). Si cambias la categoría de un comercio en la vista previa, se aplica a todos sus movimientos y se recuerda para la próxima importación.
-- **Sin duplicados**: cada movimiento importado guarda su origen (el banco) y su identificador (`transaction_id` en Trade Republic). Reimportar el mismo archivo salta lo ya guardado; lo garantiza una restricción única en la base de datos (migración 004).
+- **Sin duplicados**: cada movimiento importado guarda su origen (el banco) y su identificador (`transaction_id` en Trade Republic; en otros bancos, la columna de identificador si la hay o fecha + importe + texto). Reimportar el mismo archivo salta lo ya guardado; lo garantiza una restricción única en la base de datos (migración 004).
 
 ## Movimientos periódicos
 

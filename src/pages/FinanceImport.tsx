@@ -1,18 +1,30 @@
 import { useMemo, useState, type ChangeEvent } from 'react';
 import { backend } from '../backend';
 import IconSelect from '../components/IconSelect';
-import { Card } from '../components/ui';
-import { BANKS, bankById, type Bank, type BankId } from '../lib/banks';
+import { Card, Empty } from '../components/ui';
+import { BANKS, bankById, detectBank, type Bank, type BankId } from '../lib/banks';
 import { categoryOptions } from '../lib/categories';
 import { parseCsv } from '../lib/csv';
 import { notifyDataChanged } from '../lib/events';
-import { normalizeMerchant, suggestCategory, txType, type ImportRow, type ReadResult } from '../lib/importer';
+import {
+  guessMapping,
+  normalizeMerchant,
+  readGeneric,
+  suggestCategory,
+  txType,
+  type ImportRow,
+  type Mapping,
+  type ReadResult,
+} from '../lib/importer';
 import { toast } from '../lib/toast';
 import type { FinanceCategory, NewRow, Transaction, TxType } from '../lib/types';
 import { useTable } from '../lib/useTable';
 import { eur, fmtDate, fmtMonth, monthKey } from '../lib/utils';
 
-type Step = { kind: 'file' } | { kind: 'preview'; fileName: string; source: BankId; result: ReadResult };
+type Step =
+  | { kind: 'file' }
+  | { kind: 'mapping'; fileName: string; table: string[][]; mapping: Mapping }
+  | { kind: 'preview'; fileName: string; source: BankId; result: ReadResult };
 
 const BANK_KEY = 'pv:import-bank';
 
@@ -24,7 +36,14 @@ const savedBank = (): Bank => {
   }
 };
 
-const bankLogo = (bank: Bank) => <img src={bank.logo} alt="" className="bank-logo" width={24} height={24} />;
+const bankLogo = (bank: Bank) =>
+  bank.logo ? (
+    <img src={bank.logo} alt="" className="bank-logo" width={24} height={24} />
+  ) : (
+    <span className="bank-logo generic" aria-hidden>
+      🏦
+    </span>
+  );
 
 export default function FinanceImport({ categories, transactions, onDone }: {
   categories: FinanceCategory[];
@@ -55,12 +74,23 @@ export default function FinanceImport({ categories, transactions, onDone }: {
     try {
       const table = parseCsv(await file.text());
       if (table.length < 2) throw new Error('El archivo no tiene movimientos.');
-      if (!bank.matches(table[0])) {
-        const other = BANKS.find((b) => b.matches(table[0]));
+      const detected = detectBank(table[0]);
+      if (!bank.read) {
+        // «Otro banco»: si en realidad es de un banco integrado, se lee con su formato (mejores categorías y grupos).
+        if (detected?.read) {
+          setBank(detected.id);
+          toast(`Es un archivo de ${detected.name}: lo leo con su formato`);
+          setStep({ kind: 'preview', fileName: file.name, source: detected.id, result: detected.read(table) });
+        } else {
+          setStep({ kind: 'mapping', fileName: file.name, table, mapping: guessMapping(table[0]) });
+        }
+        return;
+      }
+      if (!bank.matches?.(table[0])) {
         throw new Error(
-          other
-            ? `Este archivo es de ${other.name}, no de ${bank.name}. Elige ${other.name} en el selector de banco.`
-            : `Este archivo no parece un export de ${bank.name}. Comprueba que es el CSV de transacciones que descarga la app del banco.`,
+          detected
+            ? `Este archivo es de ${detected.name}, no de ${bank.name}. Elige ${detected.name} en el selector de banco.`
+            : `Este archivo no parece un export de ${bank.name}. Comprueba que es el CSV de transacciones que descarga la app del banco, o elige «Otro banco (CSV)».`,
         );
       }
       setStep({ kind: 'preview', fileName: file.name, source: bank.id, result: bank.read(table) });
@@ -68,6 +98,19 @@ export default function FinanceImport({ categories, transactions, onDone }: {
       setError(err instanceof Error ? err.message : 'No se ha podido leer el archivo.');
     }
   };
+
+  if (step.kind === 'mapping') {
+    return (
+      <MappingStep
+        step={step}
+        onBack={() => setStep({ kind: 'file' })}
+        onChange={(mapping) => setStep({ ...step, mapping })}
+        onContinue={() =>
+          setStep({ kind: 'preview', fileName: step.fileName, source: 'csv', result: readGeneric(step.table, step.mapping) })
+        }
+      />
+    );
+  }
 
   if (step.kind === 'preview') {
     return (
@@ -97,7 +140,7 @@ export default function FinanceImport({ categories, transactions, onDone }: {
           <span className="file-drop-icon" aria-hidden>
             📄
           </span>
-          <strong>Elegir archivo CSV de {bank.name}</strong>
+          <strong>{bank.read ? `Elegir archivo CSV de ${bank.name}` : 'Elegir archivo CSV'}</strong>
           <span className="muted small">Se lee en tu navegador; solo se guardan los movimientos que confirmes.</span>
         </label>
         {error && (
@@ -106,7 +149,7 @@ export default function FinanceImport({ categories, transactions, onDone }: {
           </p>
         )}
       </Card>
-      <Card title={`Cómo exportar desde ${bank.name}`}>
+      <Card title={bank.read ? `Cómo exportar desde ${bank.name}` : 'Cómo exportar desde tu banco'}>
         <ol className="steps">
           {bank.howTo.map((s) => (
             <li key={s}>{s}</li>
@@ -115,6 +158,84 @@ export default function FinanceImport({ categories, transactions, onDone }: {
         {bank.tip && <p className="muted small">Consejo: {bank.tip}</p>}
       </Card>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- Columnas (otro banco)
+
+function MappingStep({ step, onBack, onChange, onContinue }: {
+  step: Extract<Step, { kind: 'mapping' }>;
+  onBack: () => void;
+  onChange: (m: Mapping) => void;
+  onContinue: () => void;
+}) {
+  const { table, mapping } = step;
+  const header = table[0];
+  const sample = readGeneric(table.slice(0, 6), mapping);
+  const ready = mapping.date >= 0 && mapping.amount >= 0 && mapping.description >= 0;
+
+  const select = (key: 'date' | 'amount' | 'description' | 'id', label: string, optional = false) => (
+    <label className="field">
+      <span>{label}</span>
+      <select value={mapping[key]} onChange={(e) => onChange({ ...mapping, [key]: Number(e.target.value) })}>
+        <option value={-1}>{optional ? '— No tiene' : '— Elige una columna'}</option>
+        {header.map((h, i) => (
+          <option key={i} value={i}>
+            {h || `Columna ${i + 1}`}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  return (
+    <Card title={`Columnas de «${step.fileName}»`}>
+      <p className="muted">Indica qué columna es cada cosa (las he adivinado por el nombre):</p>
+      <div className="field-row">
+        {select('date', 'Fecha')}
+        {select('amount', 'Importe')}
+      </div>
+      <div className="field-row">
+        {select('description', 'Descripción')}
+        {select('id', 'Identificador (opcional)', true)}
+      </div>
+      <label className="check small">
+        <input type="checkbox" checked={mapping.invert} onChange={(e) => onChange({ ...mapping, invert: e.target.checked })} />
+        Mi banco pone los gastos en positivo (invertir signo)
+      </label>
+
+      <div className="stack">
+        <strong className="small">Así se leerán las primeras filas:</strong>
+        {!ready ? (
+          <Empty>Elige al menos fecha, importe y descripción.</Empty>
+        ) : (
+          <ul className="list">
+            {sample.rows.map((r) => (
+              <li key={r.key}>
+                <span>
+                  <span className="muted small">{fmtDate(r.date)}</span> {r.text}
+                </span>
+                <span className={`tx-amount ${txType(r)}`}>{eur(r.amount)}</span>
+              </li>
+            ))}
+            {sample.errors.map((e) => (
+              <li key={e} className="text-danger small">
+                {e}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="row between">
+        <button className="btn ghost" onClick={onBack}>
+          ← Otro archivo
+        </button>
+        <button className="btn primary" disabled={!ready} onClick={onContinue}>
+          Continuar
+        </button>
+      </div>
+    </Card>
   );
 }
 
@@ -415,7 +536,8 @@ function PreviewStep({ step, categories, transactions, onBack, onDone }: {
         }
       >
         <p className="muted small">
-          Formato de {bank.name} detectado. {rows.length} movimientos leídos
+          {bank.read && `Formato de ${bank.name} detectado. `}
+          {rows.length} movimientos leídos
           {duplicates > 0 && ` · ${duplicates} ya importados antes (se saltan)`}
           {result.errors.length > 0 && ` · ${result.errors.length} filas no se han podido leer`}
         </p>

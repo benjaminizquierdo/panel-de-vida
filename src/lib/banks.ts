@@ -5,15 +5,17 @@ import tradeRepublicLogo from '../assets/banks/trade-republic.png';
 import { groupLabel, isTradeRepublic, readTradeRepublic, type ReadResult } from './importer';
 
 /** Coincide con transactions.source de lo importado: no cambiar el id de un banco ya publicado. */
-export type BankId = 'trade_republic';
+export type BankId = 'trade_republic' | 'csv';
 
 export interface Bank {
   id: BankId;
   name: string;
-  logo: string;
-  /** ¿Es este archivo un export de este banco? (por la cabecera) */
-  matches: (header: string[]) => boolean;
-  read: (table: string[][]) => ReadResult;
+  /** Sin logo se muestra un icono genérico. */
+  logo: string | null;
+  /** ¿Es este archivo un export de este banco? (por la cabecera). Sin lector propio no se define. */
+  matches?: (header: string[]) => boolean;
+  /** Sin lector propio, el usuario indica qué columna es cada cosa. */
+  read?: (table: string[][]) => ReadResult;
   /** Nombre legible del tipo de operación (ImportRow.group), si el banco usa códigos. */
   groupLabel?: (group: string) => string;
   /** Pasos para conseguir el archivo desde el banco. */
@@ -36,6 +38,21 @@ export const BANKS: Bank[] = [
     ],
     tip: 'no abras y guardes el CSV con Excel antes de importarlo; puede cambiar el formato de fechas e importes.',
   },
+  // Siempre la última: para bancos aún no integrados.
+  {
+    id: 'csv',
+    name: 'Otro banco (CSV)',
+    logo: null,
+    howTo: [
+      'En la web o la app de tu banco, busca la opción de descargar o exportar movimientos y elige el formato CSV.',
+      'Súbelo aquí e indica qué columna es la fecha, el importe y la descripción (las intento adivinar por el nombre).',
+      'Si tu banco pone los gastos en positivo, marca «invertir signo». Reimportar el mismo archivo no duplica movimientos.',
+    ],
+    tip: 'si tu banco solo exporta en Excel (.xlsx), ábrelo y guárdalo como CSV antes de subirlo.',
+  },
 ];
 
 export const bankById = (id: string | null | undefined) => BANKS.find((b) => b.id === id);
+
+/** Banco integrado (con lector propio) al que pertenece un archivo, por su cabecera. */
+export const detectBank = (header: string[]) => BANKS.find((b) => b.matches?.(header));
