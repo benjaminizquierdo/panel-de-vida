@@ -250,6 +250,42 @@ await db.query(`select public.merge_finance_category($1, $2)`, [otrosA, suscripc
 ok((await one(`select category_id from public.recurring_transactions where id = $1`, [rule.id])).category_id === suscripciones, 'fusionar categorías mueve también sus periódicos');
 ok(!!(await fails(`delete from public.finance_categories where id = $1`, [suscripciones])), 'no se puede borrar una categoría que usan movimientos o periódicos');
 
+// ---------------------------------------------------------------- 006: sub-pestañas y bloques
+
+await asAdmin();
+await db.exec(migration('006_pestanas.sql'));
+ok(true, '006_pestanas.sql se ejecuta sin errores');
+
+await as(A);
+const gym = await one(`insert into public.tabs (section, name, icon) values ('habitos', 'Gym', '🏋️') returning id, user_id`);
+ok(gym.user_id === A, 'la sub-pestaña queda a nombre de quien la crea');
+const note = await one(
+  `insert into public.blocks (tab_id, type, title, content) values ($1, 'notas', 'Rutina', '{"text": "Lunes: pierna"}') returning id`,
+  [gym.id],
+);
+await db.query(`insert into public.blocks (tab_id, type, content) values ($1, 'checklist', '{"items": [], "reset": "diario"}')`, [gym.id]);
+ok((await one(`select content->>'text' t from public.blocks where id = $1`, [note.id])).t === 'Lunes: pierna', 'el contenido del bloque se guarda como JSON');
+ok(!!(await fails(`insert into public.tabs (section, name) values ('ajustes', 'X')`)), 'solo se pueden crear sub-pestañas en las secciones fijas');
+ok(!!(await fails(`insert into public.tabs (section, name) values ('habitos', '   ')`)), 'el nombre no puede estar vacío');
+ok(!!(await fails(`insert into public.tabs (section, name) values ('habitos', $1)`, ['x'.repeat(41)])), 'ni pasar de 40 caracteres');
+ok(!!(await fails(`insert into public.tabs (section, parent_id, name) values ('habitos', $1, 'X')`, [gym.id])), 'una sub-pestaña no puede colgar a la vez de una sección y de otra pestaña');
+ok(!!(await fails(`insert into public.blocks (tab_id, type) values ($1, 'video')`, [gym.id])), 'tipo de bloque desconocido rechazado');
+ok(!!(await fails(`insert into public.blocks (tab_id, type, content) values ($1, 'notas', '[1, 2]')`, [gym.id])), 'el contenido tiene que ser un objeto JSON');
+ok(!!(await fails(`insert into public.blocks (tab_id, type, content) values ($1, 'notas', $2)`, [gym.id, JSON.stringify({ text: 'x'.repeat(70000) })])), 'un bloque no puede pasar de 64 KB');
+
+await as(B);
+ok((await one(`select count(*)::int n from public.tabs`)).n === 0, 'B no ve las sub-pestañas de A');
+ok((await one(`select count(*)::int n from public.blocks`)).n === 0, 'B no ve los bloques de A');
+ok(!!(await fails(`insert into public.blocks (tab_id, type) values ($1, 'notas')`, [gym.id])), 'B no puede añadir bloques a una pestaña de A');
+ok((await db.query(`update public.blocks set content = '{"text": "hackeado"}' where id = $1`, [note.id])).affectedRows === 0, 'B no puede modificar un bloque de A');
+ok((await db.query(`delete from public.tabs where id = $1`, [gym.id])).affectedRows === 0, 'B no puede borrar una pestaña de A');
+const tabB = await one(`insert into public.tabs (section, name) values ('habitos', 'Mía') returning id`);
+
+await as(A);
+ok(!!(await fails(`update public.blocks set tab_id = $1 where id = $2`, [tabB.id, note.id])), 'A no puede mover un bloque a una pestaña de B');
+await db.query(`delete from public.tabs where id = $1`, [gym.id]);
+ok((await one(`select count(*)::int n from public.blocks`)).n === 0, 'borrar una sub-pestaña borra sus bloques');
+
 // ---------------------------------------------------------------- Seguridad general (resto de tablas)
 
 const pA = await one(`insert into public.projects (name) values ('Proyecto de A') returning id, user_id`);

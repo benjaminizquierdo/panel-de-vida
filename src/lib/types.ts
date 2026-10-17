@@ -124,8 +124,31 @@ export interface Highlight extends Base {
   done: boolean;
 }
 
+/** Sub-pestaña creada por el usuario dentro de una pestaña principal fija (006_pestanas.sql). */
+export interface UserTab extends Base {
+  /** Id de la pestaña principal (ver lib/tabs.ts). Null queda para pestañas principales propias (futuro). */
+  section: string | null;
+  parent_id: string | null;
+  name: string;
+  icon: string;
+  sort_order: number;
+}
+
+export type BlockType = 'notas' | 'checklist' | 'enlaces';
+
+/** Bloque de una sub-pestaña. `content` tiene la forma que define su tipo en lib/blocks.ts. */
+export interface Block extends Base {
+  tab_id: string;
+  type: BlockType;
+  title: string;
+  content: Record<string, unknown>;
+  sort_order: number;
+}
+
 /** Cada clave es el nombre de una tabla de Supabase (ver supabase/migrations). */
 export interface Tables {
+  tabs: UserTab;
+  blocks: Block;
   finance_categories: FinanceCategory;
   import_rules: ImportRule;
   recurring_transactions: RecurringTransaction;

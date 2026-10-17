@@ -24,6 +24,10 @@ const CASCADE: Partial<Record<TableName, [TableName, string][]>> = {
     ['finance_categories', 'parent_id'],
     ['budgets', 'category_id'],
   ],
+  tabs: [
+    ['blocks', 'tab_id'],
+    ['tabs', 'parent_id'],
+  ],
 };
 
 function read<T>(key: string, fallback: T): T {
@@ -194,6 +198,9 @@ export function createLocalBackend(): Backend {
       const created = makeRow<T>(row, uid());
       if (table === 'finance_categories') checkCategory(created as FinanceCategory);
       if (table === 'transactions') checkTransaction(created);
+      if (table === 'blocks' && !rows('tabs').some((t) => t.id === field(created, 'tab_id'))) {
+        throw new Error('La pestaña de este bloque no existe');
+      }
       save(table, [...rows(table), created]);
       return created;
     },

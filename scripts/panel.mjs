@@ -18,13 +18,14 @@
 //   resumen                                         Resumen del día y del mes
 //
 // Tablas: projects, tasks, habits, habit_logs, health_logs, goals, reviews,
-//         highlights, transactions, budgets, finance_categories
+//         highlights, transactions, budgets, finance_categories, tabs, blocks
 
 import { createClient } from '@supabase/supabase-js';
 
 const TABLES = [
   'projects', 'tasks', 'habits', 'habit_logs', 'health_logs',
   'goals', 'reviews', 'highlights', 'transactions', 'budgets', 'finance_categories',
+  'tabs', 'blocks',
 ];
 
 const { VITE_SUPABASE_URL: url, VITE_SUPABASE_ANON_KEY: key, PANEL_EMAIL: email, PANEL_PASSWORD: password } = process.env;

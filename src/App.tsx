@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { backend } from './backend';
 import Assistant from './components/Assistant';
 import Auth from './components/Auth';
+import SectionTabs from './components/SectionTabs';
 import Toaster from './components/Toaster';
 import { notifyDataChanged } from './lib/events';
 import { isTabId, TABS, type TabId } from './lib/tabs';
@@ -72,6 +73,8 @@ export default function App() {
 
   if (!ready) return <div className="splash">Cargando…</div>;
 
+  const section = TABS.find((t) => t.id === tab) ?? TABS[0];
+
   if (!user) {
     return (
       <>
@@ -107,13 +110,15 @@ export default function App() {
 
       {/* key = user.id: al cambiar de cuenta se desmonta todo y no quedan datos del usuario anterior. */}
       <main className="content" key={`${user.id}:${tab}`}>
-        <Suspense fallback={<p className="empty">Cargando…</p>}>
-          {tab === 'inicio' && <Home user={user} go={go} />}
-          {tab === 'proyectos' && <Projects />}
-          {tab === 'habitos' && <Habits />}
-          {tab === 'objetivos' && <Goals />}
-          {tab === 'finanzas' && <Finance />}
-        </Suspense>
+        <SectionTabs section={tab} label={section.label} icon={section.icon}>
+          <Suspense fallback={<p className="empty">Cargando…</p>}>
+            {tab === 'inicio' && <Home user={user} go={go} />}
+            {tab === 'proyectos' && <Projects />}
+            {tab === 'habitos' && <Habits />}
+            {tab === 'objetivos' && <Goals />}
+            {tab === 'finanzas' && <Finance />}
+          </Suspense>
+        </SectionTabs>
       </main>
 
       <Assistant key={user.id} user={user} />

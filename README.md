@@ -7,6 +7,7 @@ Plataforma web para gestionar tu vida personal en un solo sitio: **proyectos y t
 - **Hábitos y salud**: cuadrícula semanal con rachas 🔥, registro diario de sueño, energía, ejercicio y peso, y gráficos de 14 días.
 - **Objetivos**: metas anuales y trimestrales con progreso, y plantilla de revisión semanal (logros, dificultades, aprendizajes, foco).
 - **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos. **Movimientos periódicos** (suscripciones, alquiler, nómina) que se apuntan solos cada semana, mes o año. **Importa movimientos bancarios** desde el export de tu banco (por ahora, Trade Republic; ver abajo).
+- **Sub-pestañas tuyas** en cada pestaña principal: con «Personalizar» creas, por ejemplo, «Gym» dentro de Hábitos y salud y la montas con bloques de **notas, checklist y enlaces** (ver abajo).
 - **Asistente de IA** 💬: un chat (con Claude) al que le cuentas lo que has hecho —«hoy he corrido 30 minutos y me he gastado 12 € en el almuerzo»— y lo registra en tu panel; también responde preguntas sobre tus datos.
 
 Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objetivos de ejemplo, todo editable.
@@ -81,6 +82,17 @@ En **Finanzas → Periódicos** (o marcando «Es periódico» al añadir un movi
 - **Sin duplicados**: cada movimiento generado lleva `source = 'recurrente'` y como id externo `<id del periódico>:<fecha>`, con la misma restricción única que la importación. Si borras uno generado, no vuelve a aparecer.
 - El asistente también los crea («apunta Netflix 12,99 € cada mes»).
 
+## Sub-pestañas y bloques
+
+Cada pestaña principal tiene un botón **Personalizar**. Al pulsarlo:
+
+- **+ Sub-pestaña** crea una sub-pestaña con nombre e icono (hasta 12 por pestaña). Aparece en una barra junto a la vista fija de la pestaña, que no cambia. Las flechas ← → la reordenan y «Nombre e icono» la renombra o la elimina, con sus bloques.
+- **Añadir bloque** abre la galería: **Notas** (texto libre que se guarda solo), **Checklist** (puede reiniciarse sola cada día o cada lunes, sin tareas programadas: cada elemento recuerda el día en que se marcó) y **Enlaces** (solo direcciones http/https, que se abren en otra pestaña).
+- Cada bloque tiene **↑ ↓** para ordenarlo, sin arrastrar (más cómodo en el móvil y accesible con teclado), y **⚙** para cambiar su título, el reinicio de la checklist o eliminarlo.
+- **Listo** cierra el modo personalizar; los bloques se siguen usando con normalidad (escribir, marcar, añadir enlaces).
+
+La app recuerda la última sub-pestaña abierta de cada pestaña. Los datos están en las tablas `tabs` y `blocks` (migración 006); el contenido de cada bloque es JSON con la forma que define su tipo en `src/lib/blocks.ts`. La tabla `tabs` ya admite pestañas principales propias para una versión futura.
+
 ## Activar el asistente de IA
 
 El asistente es una [Edge Function](https://supabase.com/docs/guides/functions) de Supabase (`supabase/functions/assistant`) que llama a la API de Claude con herramientas para registrar y consultar datos. Puede **añadir y modificar**, nunca borrar, y cada usuario tiene un **límite diario de mensajes** (30 por defecto) para acotar el coste. Sin esto configurado, la app funciona igual y el chat avisa de que no está disponible.
@@ -133,7 +145,7 @@ npm run panel -- add goals '{"title": "Correr 10 km", "horizon": "trimestral", "
 npm run typecheck       # tipos de TypeScript
 npm run test:db         # ejecuta los .sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
 npm run test:assistant  # ejecuta la Edge Function en Deno contra Supabase y Claude simulados
-npm run test:lib        # lector de CSV e importador, y calendario de los periódicos
+npm run test:lib        # lector de CSV e importador, calendario de los periódicos y bloques
 npm run build           # build de producción en dist/
 ```
 
@@ -144,10 +156,11 @@ npm run build           # build de producción en dist/
 ```
 src/
   backend/        Contrato común + implementación Supabase y modo demo (localStorage)
-  components/     UI compartida, acceso, avisos y chat del asistente
+  components/     UI compartida, acceso, avisos, chat del asistente y barra de sub-pestañas (SectionTabs)
   assets/banks/   Logos de los bancos del importador
-  lib/            Tipos, valores por defecto, utilidades, hooks de datos, importador y bancos (banks.ts)
-  pages/          Inicio, Proyectos, Hábitos, Objetivos, Finanzas
+  blocks/         Componente de cada tipo de bloque (notas, checklist, enlaces)
+  lib/            Tipos, valores por defecto, utilidades, hooks de datos, importador, bancos y bloques
+  pages/          Inicio, Proyectos, Hábitos, Objetivos, Finanzas y la vista de una sub-pestaña (CustomTab)
 supabase/
   migrations/
     001_base.sql        Tablas, Row Level Security y datos iniciales de cada cuenta
@@ -155,6 +168,7 @@ supabase/
     003_categorias.sql  Categorías de finanzas personalizables (migra los datos existentes)
     004_importacion.sql Origen e id externo de cada movimiento (sin duplicados) y reglas por comercio
     005_periodicos.sql  Movimientos periódicos y su generación diaria con pg_cron
+    006_pestanas.sql    Sub-pestañas personalizadas y sus bloques
   functions/assistant/
     index.ts      Servidor: sesión, cupo, bucle de herramientas con Claude
     tools.ts      Herramientas (registrar gastos, periódicos, hábitos, salud, tareas, objetivos; consultar)
@@ -166,10 +180,12 @@ tests/
   assistant.test.ts  Test de la Edge Function con servicios simulados
   importer.test.ts   Test del lector de CSV y del importador
   recurring.test.ts  Test del calendario de los periódicos
+  blocks.test.ts     Test de los bloques (reinicio de la checklist, enlaces seguros, orden)
 ```
 
 ## Personalizar
 
 - **Hábitos, categorías y presupuestos con los que empieza cada cuenta**: `src/lib/defaults.ts` (modo demo) y, para Supabase, `create_default_finance_categories()` y `seed_new_user()` en una migración nueva. Cada usuario puede después cambiar sus categorías desde Finanzas → Categorías.
 - **Añadir un banco al importador**: escribe su lector en `src/lib/importer.ts` (reconocer la cabecera y convertir cada fila; `readGeneric()` ya resuelve columnas de fecha, importe y texto), pon su logo en `src/assets/banks/` y añádelo a `BANKS` en `src/lib/banks.ts` con sus instrucciones. Su `id` queda guardado como origen de los movimientos importados, así que no se cambia una vez publicado.
+- **Añadir un tipo de bloque**: su descripción y contenido vacío en `BLOCK_KINDS` (`src/lib/blocks.ts`), su componente en `src/blocks/` (registrado en `src/blocks/index.tsx`), el tipo en `BlockType` (`src/lib/types.ts`) y, en una migración nueva, el tipo en el check `blocks_type_check`.
 - **Tema**: los colores están como variables CSS al principio de `src/styles.css`, con versión clara y oscura (sigue el tema del sistema).
