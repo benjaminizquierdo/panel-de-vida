@@ -1,5 +1,5 @@
-import { createClient, type User as SupabaseUser } from '@supabase/supabase-js';
-import type { NewRow, Row, TableName, User } from '../lib/types';
+import { createClient, FunctionsHttpError, type User as SupabaseUser } from '@supabase/supabase-js';
+import { AssistantError, type AssistantResponse, type NewRow, type Row, type TableName, type User } from '../lib/types';
 import type { Backend } from './types';
 
 const MESSAGES: Record<string, string> = {
@@ -75,6 +75,26 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
     async remove(table, id) {
       const { error } = await sb.from(table).delete().eq('id', id);
       if (error) fail(error);
+    },
+
+    async assistant(request) {
+      const { data, error } = await sb.functions.invoke<AssistantResponse>('assistant', { body: request });
+      if (!error && data) return data;
+
+      // La función responde {error, actions?, remaining?} con un estado HTTP de error.
+      let detail: { error?: string; actions?: string[]; remaining?: number } = {};
+      if (error instanceof FunctionsHttpError) {
+        try {
+          detail = await error.context.json();
+        } catch {
+          // Respuesta sin JSON (p. ej. la función no está desplegada).
+        }
+      }
+      throw new AssistantError(
+        detail.error ?? 'No se ha podido contactar con el asistente. Comprueba tu conexión.',
+        detail.actions ?? [],
+        detail.remaining,
+      );
     },
   };
 }

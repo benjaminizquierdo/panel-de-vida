@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { backend } from './backend';
+import Assistant from './components/Assistant';
 import Auth from './components/Auth';
 import Toaster from './components/Toaster';
 import { isTabId, TABS, type TabId } from './lib/tabs';
@@ -97,6 +98,7 @@ export default function App() {
         </Suspense>
       </main>
 
+      <Assistant key={user.id} user={user} />
       <Toaster />
     </div>
   );

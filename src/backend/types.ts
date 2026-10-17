@@ -1,4 +1,4 @@
-import type { NewRow, Row, TableName, User } from '../lib/types';
+import type { AssistantRequest, AssistantResponse, NewRow, Row, TableName, User } from '../lib/types';
 
 /**
  * Contrato común de los dos almacenamientos. Toda operación de datos se limita
@@ -16,4 +16,6 @@ export interface Backend {
   insert<T extends TableName>(table: T, row: NewRow<T>): Promise<Row<T>>;
   update<T extends TableName>(table: T, id: string, patch: Partial<NewRow<T>>): Promise<void>;
   remove(table: TableName, id: string): Promise<void>;
+  /** Asistente de IA. Solo existe con Supabase (necesita la Edge Function). Lanza AssistantError. */
+  assistant?(request: AssistantRequest): Promise<AssistantResponse>;
 }

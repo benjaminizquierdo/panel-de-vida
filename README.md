@@ -7,6 +7,7 @@ Plataforma web para gestionar tu vida personal en un solo sitio: **proyectos y t
 - **Hábitos y salud**: cuadrícula semanal con rachas 🔥, registro diario de sueño, energía, ejercicio y peso, y gráficos de 14 días.
 - **Objetivos**: metas anuales y trimestrales con progreso, y plantilla de revisión semanal (logros, dificultades, aprendizajes, foco).
 - **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses.
+- **Asistente de IA** 💬: un chat (con Claude) al que le cuentas lo que has hecho —«hoy he corrido 30 minutos y me he gastado 12 € en el almuerzo»— y lo registra en tu panel; también responde preguntas sobre tus datos.
 
 Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objetivos de ejemplo, todo editable.
 
@@ -16,7 +17,9 @@ Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objet
 Navegador (React + TypeScript + Vite)
    │
    ├─ Supabase Auth ──── registro, inicio de sesión, confirmación por email
-   └─ Supabase Postgres ─ tablas con Row Level Security: user_id = auth.uid()
+   ├─ Supabase Postgres ─ tablas con Row Level Security: user_id = auth.uid()
+   └─ Edge Function «assistant» ──▶ API de Claude
+          (la clave de Anthropic vive aquí; lee y escribe con la sesión del usuario, así que RLS también le aplica)
 ```
 
 No hay servidor propio: la app es estática (se despliega gratis en Vercel o Netlify) y habla directamente con Supabase. El aislamiento entre usuarios lo garantiza **la base de datos**, no el frontend: aunque alguien manipule la app, Postgres solo le devuelve y le deja modificar sus propias filas.
@@ -58,6 +61,27 @@ Abre http://localhost:5173, crea una cuenta y listo.
 
 Netlify o Cloudflare Pages funcionan igual: comando de build `npm run build`, carpeta `dist`.
 
+## Activar el asistente de IA
+
+El asistente es una [Edge Function](https://supabase.com/docs/guides/functions) de Supabase (`supabase/functions/assistant`) que llama a la API de Claude con herramientas para registrar y consultar datos. Puede **añadir y modificar**, nunca borrar, y cada usuario tiene un **límite diario de mensajes** (30 por defecto) para acotar el coste. Sin esto configurado, la app funciona igual y el chat avisa de que no está disponible.
+
+1. **Base de datos**: en **SQL Editor**, ejecuta [`supabase/asistente.sql`](supabase/asistente.sql) (después de `schema.sql`). Crea el contador del límite diario.
+2. **Clave de Anthropic**: en [console.anthropic.com](https://console.anthropic.com) crea una API key y, en *Limits*, fija un tope de gasto mensual. Pagas el uso de todos los usuarios.
+3. **Secretos de la función**: en Supabase → **Edge Functions → Secrets**, añade `ANTHROPIC_API_KEY` con tu clave. Opcionales:
+   | Secreto | Por defecto | Para qué |
+   |---|---|---|
+   | `ASSISTANT_MODEL` | `claude-sonnet-5-5` | Modelo de Claude (p. ej. `claude-haiku-5-5`, más barato, o `claude-opus-5-5`, más capaz) |
+   | `ASSISTANT_EFFORT` | `low` | Cuánto razona antes de responder: `low`, `medium` o `high` |
+   | `ASSISTANT_DAILY_LIMIT` | `30` | Mensajes por usuario y día |
+4. **Desplegar la función** (una vez y cada vez que cambies su código):
+   ```bash
+   npx supabase login
+   npx supabase functions deploy assistant --project-ref <tu-project-ref> --no-verify-jwt --use-api
+   ```
+   El *project ref* es el identificador de tu URL (`https://<ref>.supabase.co`). `--no-verify-jwt` es intencionado: la función comprueba ella misma la sesión con `auth.getUser()`, lo que funciona también con las claves nuevas de Supabase.
+
+Cómo funciona por dentro: el prompt de sistema y las herramientas son fijos (se cachean); la fecha y el estado del usuario (hábitos, proyectos, tareas, objetivos) van en cada turno como mensaje `role: "system"`. La app guarda la conversación en `sessionStorage` y la reenvía sin modificarla; el servidor recorta los turnos más antiguos si crece demasiado.
+
 ## Añadir datos desde la terminal (o pedírselo a Claude)
 
 `scripts/panel.mjs` lee y escribe en **tu** cuenta, iniciando sesión con tu email y contraseña. Así un asistente como Claude Code puede registrar cosas por ti cuando se lo pidas («apunta 45 € de cena», «marca que hoy he meditado»). Añade a `.env.local`:
@@ -86,30 +110,37 @@ npm run panel -- add goals '{"title": "Correr 10 km", "horizon": "trimestral", "
 ## Tests
 
 ```bash
-npm run typecheck   # tipos de TypeScript
-npm run test:db     # ejecuta schema.sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
-npm run build       # build de producción en dist/
+npm run typecheck       # tipos de TypeScript
+npm run test:db         # ejecuta los .sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
+npm run test:assistant  # ejecuta la Edge Function en Deno contra Supabase y Claude simulados
+npm run build           # build de producción en dist/
 ```
 
-`test:db` verifica, entre otras cosas, que un usuario no puede leer, modificar, borrar ni enlazar datos de otro, que los anónimos no tienen acceso, y que los borrados en cascada funcionan.
+`test:db` verifica, entre otras cosas, que un usuario no puede leer, modificar, borrar ni enlazar datos de otro, que los anónimos no tienen acceso, que los borrados en cascada funcionan y que nadie puede ampliar su cupo del asistente. `test:assistant` comprueba autenticación, cupo, contexto, bucle de herramientas, escrituras y recorte del historial (no necesita clave de Anthropic; descarga Deno con `npx` la primera vez).
 
 ## Estructura
 
 ```
 src/
   backend/        Contrato común + implementación Supabase y modo demo (localStorage)
-  components/     UI compartida, acceso y avisos
+  components/     UI compartida, acceso, avisos y chat del asistente
   lib/            Tipos, valores por defecto, utilidades y hooks de datos
   pages/          Inicio, Proyectos, Hábitos, Objetivos, Finanzas
 supabase/
   schema.sql      Tablas, Row Level Security y datos iniciales de cada cuenta
+  asistente.sql   Límite diario de mensajes del asistente
+  functions/assistant/
+    index.ts      Servidor: sesión, cupo, bucle de herramientas con Claude
+    tools.ts      Herramientas (registrar gastos, hábitos, salud, tareas, objetivos; consultar)
+    prompt.ts     Prompt de sistema y contexto de cada turno
 scripts/
   panel.mjs       Línea de comandos para leer/escribir datos
 tests/
-  schema.test.mjs Test del esquema y de la seguridad por filas
+  schema.test.mjs    Test del esquema y de la seguridad por filas
+  assistant.test.ts  Test de la Edge Function con servicios simulados
 ```
 
 ## Personalizar
 
-- **Categorías de gasto e ingreso, colores, hábitos y presupuestos iniciales**: `src/lib/defaults.ts`. Si cambias los datos iniciales, actualiza también la función `seed_new_user()` en `supabase/schema.sql`.
+- **Categorías de gasto e ingreso, colores, hábitos y presupuestos iniciales**: `src/lib/defaults.ts`. Si cambias los datos iniciales, actualiza también la función `seed_new_user()` en `supabase/schema.sql`; si cambias las categorías, también `supabase/functions/assistant/tools.ts`.
 - **Tema**: los colores están como variables CSS al principio de `src/styles.css`, con versión clara y oscura (sigue el tema del sistema).

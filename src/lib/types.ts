@@ -106,3 +106,40 @@ export interface User {
   email: string;
   name: string;
 }
+
+// ---------- Asistente (ver supabase/functions/assistant/index.ts)
+
+/** Mensaje del historial de la API de Claude. La app lo guarda y lo reenvía sin tocarlo. */
+export interface TranscriptMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: unknown;
+}
+
+export interface AssistantRequest {
+  message: string;
+  history: TranscriptMessage[];
+  today: string;
+}
+
+export interface AssistantResponse {
+  reply: string;
+  /** Mensajes nuevos que hay que añadir al final del historial. */
+  appended: TranscriptMessage[];
+  /** Cuántos mensajes del principio del historial ha descartado el servidor. */
+  dropped: number;
+  /** Lo que el asistente ha guardado, en frases legibles. */
+  actions: string[];
+  /** Mensajes que le quedan hoy al usuario. */
+  remaining: number;
+}
+
+export class AssistantError extends Error {
+  readonly actions: string[];
+  readonly remaining?: number;
+
+  constructor(message: string, actions: string[] = [], remaining?: number) {
+    super(message);
+    this.actions = actions;
+    this.remaining = remaining;
+  }
+}

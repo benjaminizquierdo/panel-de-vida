@@ -4,7 +4,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 
-const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+const sql = (file) => readFileSync(new URL(`../supabase/${file}`, import.meta.url), 'utf8');
 const db = new PGlite();
 
 // Lo que Supabase ya trae: esquema auth, auth.uid() leyendo el JWT, roles y privilegios por defecto.
@@ -19,8 +19,10 @@ await db.exec(`
   alter default privileges in schema public grant all on tables to anon, authenticated;
 `);
 
-await db.exec(schema);
+await db.exec(sql('schema.sql'));
 console.log('✓ schema.sql se ejecuta sin errores');
+await db.exec(sql('asistente.sql'));
+console.log('✓ asistente.sql se ejecuta sin errores');
 
 const A = '00000000-0000-0000-0000-00000000000a';
 const B = '00000000-0000-0000-0000-00000000000b';
@@ -89,6 +91,18 @@ await db.query(`delete from public.projects where id = $1`, [pA.id]);
 ok((await one(`select count(*)::int n from public.tasks`)).n === 1, 'borrar un proyecto borra sus tareas (la suelta se queda)');
 await db.query(`delete from public.habits where id = $1`, [hA.id]);
 ok((await one(`select count(*)::int n from public.habit_logs`)).n === 0, 'borrar un hábito borra su historial');
+
+// Cupo diario del asistente
+await as(A);
+const quota = async (limit) => (await one(`select public.assistant_take_quota($1) as r`, [limit])).r;
+ok((await quota(3)) === 2 && (await quota(3)) === 1 && (await quota(3)) === 0, 'el cupo baja con cada mensaje (2, 1, 0)');
+ok((await quota(3)) === -1, 'agotado el cupo, devuelve -1');
+ok((await one(`select messages from public.assistant_usage`)).messages === 3, 'un mensaje rechazado no suma al contador');
+ok(!!(await fails(`update public.assistant_usage set messages = 0`)) || (await one(`select messages from public.assistant_usage`)).messages === 3, 'un usuario no puede reiniciar su contador');
+ok(!!(await fails(`insert into public.assistant_usage (day, messages) values (current_date + 1, 0)`)), 'un usuario no puede insertar uso a mano');
+await as(B);
+ok((await quota(3)) === 2, 'el cupo de B es independiente del de A');
+ok((await one(`select count(*)::int n from public.assistant_usage`)).n === 1, 'B solo ve su propio uso');
 
 // Anónimos sin acceso
 await db.exec(`reset role; set role anon;`);

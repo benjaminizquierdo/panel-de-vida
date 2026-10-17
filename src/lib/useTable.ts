@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { backend } from '../backend';
+import { onDataChanged } from './events';
 import { toast } from './toast';
 import type { NewRow, Row, TableName } from './types';
 
@@ -27,6 +28,7 @@ export function useTable<T extends TableName>(table: T) {
 
   useEffect(() => {
     void reload();
+    return onDataChanged(() => void reload());
   }, [reload]);
 
   const add = useCallback(
