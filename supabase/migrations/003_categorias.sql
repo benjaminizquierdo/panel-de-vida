@@ -11,6 +11,9 @@
 --   · Una categoría con movimientos no se puede borrar: se archiva o se fusiona
 --     con otra (merge_finance_category).
 
+-- Todo o nada: si algo falla, no se aplica ningún cambio.
+begin;
+
 -- ---------------------------------------------------------------- Tabla
 
 create table public.finance_categories (
@@ -246,3 +249,5 @@ begin
   return new;
 end;
 $$;
+
+commit;
