@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { backend } from './backend';
 import Assistant from './components/Assistant';
 import Auth from './components/Auth';
+import ErrorBoundary from './components/ErrorBoundary';
 import SectionTabs from './components/SectionTabs';
 import Toaster from './components/Toaster';
 import { notifyDataChanged } from './lib/events';
@@ -110,18 +111,22 @@ export default function App() {
 
       {/* key = user.id: al cambiar de cuenta se desmonta todo y no quedan datos del usuario anterior. */}
       <main className="content" key={`${user.id}:${tab}`}>
-        <SectionTabs section={tab} label={section.label} icon={section.icon}>
-          <Suspense fallback={<p className="empty">Cargando…</p>}>
-            {tab === 'inicio' && <Home user={user} go={go} />}
-            {tab === 'proyectos' && <Projects />}
-            {tab === 'habitos' && <Habits />}
-            {tab === 'objetivos' && <Goals />}
-            {tab === 'finanzas' && <Finance />}
-          </Suspense>
-        </SectionTabs>
+        <ErrorBoundary scope={`la pestaña «${section.label}»`}>
+          <SectionTabs section={tab} label={section.label} icon={section.icon}>
+            <Suspense fallback={<p className="empty">Cargando…</p>}>
+              {tab === 'inicio' && <Home user={user} go={go} />}
+              {tab === 'proyectos' && <Projects />}
+              {tab === 'habitos' && <Habits />}
+              {tab === 'objetivos' && <Goals />}
+              {tab === 'finanzas' && <Finance />}
+            </Suspense>
+          </SectionTabs>
+        </ErrorBoundary>
       </main>
 
-      <Assistant key={user.id} user={user} />
+      <ErrorBoundary scope="el asistente">
+        <Assistant key={user.id} user={user} />
+      </ErrorBoundary>
       <Toaster />
     </div>
   );

@@ -12,6 +12,8 @@ Plataforma web para gestionar tu vida personal en un solo sitio: **proyectos y t
 
 Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objetivos de ejemplo, todo editable.
 
+Si algo falla, la app no se queda en blanco: explica qué ha pasado cuando se puede saber (sin conexión, versión a medio cargar, datos con un formato inesperado, sesión caducada…), qué hacer, y guarda los detalles técnicos para copiarlos. Si falla una pestaña, el resto de la app sigue funcionando (`src/lib/errors.ts` y `src/components/ErrorBoundary.tsx`).
+
 ## Arquitectura
 
 ```
@@ -145,7 +147,7 @@ npm run panel -- add goals '{"title": "Correr 10 km", "horizon": "trimestral", "
 npm run typecheck       # tipos de TypeScript
 npm run test:db         # ejecuta los .sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
 npm run test:assistant  # ejecuta la Edge Function en Deno contra Supabase y Claude simulados
-npm run test:lib        # lector de CSV e importador, calendario de los periódicos y bloques
+npm run test:lib        # lector de CSV e importador, periódicos, bloques y mensajes de error
 npm run build           # build de producción en dist/
 ```
 
@@ -181,6 +183,7 @@ tests/
   importer.test.ts   Test del lector de CSV y del importador
   recurring.test.ts  Test del calendario de los periódicos
   blocks.test.ts     Test de los bloques (reinicio de la checklist, enlaces seguros, orden)
+  errors.test.ts     Test de los mensajes de error
 ```
 
 ## Personalizar
