@@ -17,6 +17,7 @@ await db.exec(`
   create role anon nologin;
   create role authenticated nologin;
   grant usage on schema public to anon, authenticated;
+  grant usage on schema auth to anon, authenticated;
   alter default privileges in schema public grant all on tables to anon, authenticated;
 `);
 
@@ -285,6 +286,80 @@ await as(A);
 ok(!!(await fails(`update public.blocks set tab_id = $1 where id = $2`, [tabB.id, note.id])), 'A no puede mover un bloque a una pestaña de B');
 await db.query(`delete from public.tabs where id = $1`, [gym.id]);
 ok((await one(`select count(*)::int n from public.blocks`)).n === 0, 'borrar una sub-pestaña borra sus bloques');
+
+// ---------------------------------------------------------------- 007: diseñador de categorías
+
+// B tiene una sub-pestaña de la 006 («Mía», en Hábitos) con tres bloques en lista.
+await as(B);
+for (const n of [0, 1, 2]) {
+  await db.query(`insert into public.blocks (tab_id, type, sort_order) values ($1, 'notas', $2)`, [tabB.id, n]);
+}
+
+await asAdmin();
+await db.exec(migration('007_disenador.sql'));
+ok(true, '007_disenador.sql se ejecuta sin errores sobre una base con datos');
+
+await as(B);
+const legacy = (await db.query(`select x, y, w from public.blocks where tab_id = $1 order by sort_order`, [tabB.id])).rows;
+ok(
+  JSON.stringify(legacy) === JSON.stringify([{ x: 0, y: 0, w: 6 }, { x: 6, y: 0, w: 6 }, { x: 0, y: 6, w: 6 }]),
+  `los bloques que ya existían se reparten en dos columnas: ${JSON.stringify(legacy)}`,
+);
+
+const START = { name: 'Inicio', icon: '🏠', template: 'inicio', blocks: [{ type: 'saludo', title: '', x: 0, y: 0, w: 12, h: 2 }] };
+const PAGES = JSON.stringify([
+  START,
+  {
+    name: 'Hábitos y salud',
+    icon: '💪',
+    template: 'habitos',
+    blocks: [],
+    children: [{ name: 'Gráficos', icon: '📈', template: 'habitos_graficos', blocks: [{ type: 'notas', content: { text: 'hola' }, x: 6, y: 0, w: 6, h: 4 }] }],
+  },
+]);
+ok((await one(`select public.seed_default_pages($1) n`, [PAGES])).n === 3, 'crea las categorías por defecto con sus subpáginas');
+ok((await one(`select public.seed_default_pages($1) n`, [PAGES])).n === 0, 'la segunda vez no crea nada');
+const habB = await one(`select id from public.tabs where template = 'habitos'`);
+const mia = await one(`select parent_id, section from public.tabs where name = 'Mía'`);
+ok(mia.parent_id === habB.id && mia.section === null, 'la sub-pestaña antigua pasa a ser subpágina de su categoría');
+const seededBlock = await one(
+  `select b.type, b.x, b.w, b.h, b.content->>'text' t from public.blocks b join public.tabs p on p.id = b.tab_id where p.template = 'habitos_graficos'`,
+);
+ok(seededBlock.type === 'notas' && seededBlock.x === 6 && seededBlock.w === 6 && seededBlock.h === 4 && seededBlock.t === 'hola', 'los bloques se crean con su posición, tamaño y contenido');
+const order = (await db.query(`select name from public.tabs where parent_id is null order by sort_order`)).rows.map((r) => r.name);
+ok(order.join(',') === 'Inicio,Hábitos y salud', `las categorías quedan en su orden: ${order}`);
+
+await db.query(`delete from public.tabs`);
+ok((await one(`select public.seed_default_pages($1) n`, [PAGES])).n === 0, 'si borra las categorías por defecto, no vuelven a aparecer solas');
+ok((await one(`select public.insert_page_tree($1) n`, [JSON.stringify([START])])).n === 1, 'pero puede restaurar una');
+ok(!!(await fails(`select public.insert_page_tree($1)`, [JSON.stringify([START])])), 'sin duplicar una categoría por defecto');
+ok(!!(await fails(`select public.insert_page_tree($1)`, [JSON.stringify([{ name: 'X', blocks: [{ type: 'notas', x: 10, w: 4 }] }])])), 'si un bloque está mal, no se crea nada');
+ok((await one(`select count(*)::int n from public.tabs where name = 'X'`)).n === 0, 'ni siquiera la página');
+
+const viajes = await one(`insert into public.tabs (name, icon) values ('Viajes', '✈️') returning id`);
+const japon = await one(`insert into public.tabs (name, parent_id) values ('Japón 2027', $1) returning id`, [viajes.id]);
+const itinerario = await one(`insert into public.tabs (name, parent_id) values ('Itinerario', $1) returning id`, [japon.id]);
+ok((await one(`select public.insert_page_tree($1, $2) n`, [JSON.stringify([{ name: 'Día 1' }]), itinerario.id])).n === 1, 'se pueden anidar páginas en tantos niveles como haga falta');
+ok(!!(await fails(`update public.tabs set parent_id = $1 where id = $2`, [itinerario.id, viajes.id])), 'una página no puede ir dentro de una de sus subpáginas');
+ok(!!(await fails(`update public.tabs set parent_id = id where id = $1`, [viajes.id])), 'ni dentro de sí misma');
+ok(!(await fails(`update public.tabs set parent_id = null where id = $1`, [itinerario.id])), 'una subpágina puede pasar a ser categoría principal');
+
+ok(!!(await fails(`insert into public.blocks (tab_id, type, x, w) values ($1, 'notas', 8, 6)`, [viajes.id])), 'un bloque no puede salirse de la rejilla de 12 columnas');
+ok(!!(await fails(`insert into public.blocks (tab_id, type, h) values ($1, 'notas', 0)`, [viajes.id])), 'ni tener altura 0');
+ok(!(await fails(`insert into public.blocks (tab_id, type) values ($1, 'fin_resumen')`, [viajes.id])), 'los tipos de bloque nuevos no necesitan otra migración');
+ok(!!(await fails(`insert into public.blocks (tab_id, type) values ($1, 'Notas; drop')`, [viajes.id])), 'pero el tipo tiene que tener forma de identificador');
+await db.query(`delete from public.tabs where id = $1`, [viajes.id]);
+ok((await one(`select count(*)::int n from public.tabs where name = 'Japón 2027'`)).n === 0, 'borrar una página borra sus subpáginas');
+ok((await one(`select count(*)::int n from public.tabs where name in ('Itinerario', 'Día 1')`)).n === 2, 'y no las que ya se habían sacado de ella');
+
+await as(A);
+ok((await one(`select count(*)::int n from public.user_settings`)).n === 0, 'A no ve los ajustes de B');
+ok((await one(`select public.seed_default_pages($1) n`, [PAGES])).n === 3, 'cada usuario recibe sus propias categorías por defecto');
+ok(!!(await fails(`select public.insert_page_tree($1, $2)`, [JSON.stringify([{ name: 'Intrusa' }]), habB.id])), 'A no puede crear páginas dentro de una de B');
+ok(!!(await fails(`update public.user_settings set user_id = $1`, [B])), 'ni hacerse pasar por B en los ajustes');
+await db.exec(`reset role; set role anon;`);
+ok(!!(await fails(`select public.seed_default_pages('[]')`)), 'sin sesión no se pueden crear páginas');
+await as(A);
 
 // ---------------------------------------------------------------- Seguridad general (resto de tablas)
 

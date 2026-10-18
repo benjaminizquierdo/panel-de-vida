@@ -1,6 +1,9 @@
 import { defaultFinanceRows, seedData, type SeedRow } from '../lib/defaults';
+import { COLS } from '../lib/layout';
+import type { PageSeed } from '../lib/pageTemplates';
+import { subtree } from '../lib/pages';
 import { dueDates } from '../lib/recurring';
-import type { FinanceCategory, Row, TableName, TxType, User } from '../lib/types';
+import type { Block, FinanceCategory, Row, TableName, TxType, User, UserTab } from '../lib/types';
 import { addDays, today } from '../lib/utils';
 import type { Backend } from './types';
 
@@ -15,6 +18,8 @@ interface StoredUser extends User {
 const KEY_USERS = 'pv:users';
 const KEY_SESSION = 'pv:session';
 const dataKey = (uid: string, table: TableName) => `pv:data:${uid}:${table}`;
+/** Igual que user_settings.pages_seeded (007_disenador.sql). */
+const seededKey = (uid: string) => `pv:pages-seeded:${uid}`;
 
 /** Igual que los `on delete cascade` del esquema SQL. */
 const CASCADE: Partial<Record<TableName, [TableName, string][]>> = {
@@ -135,9 +140,62 @@ export function createLocalBackend(): Backend {
     if (duplicate) throw new Error(`Ya existe una categoría «${cat.name}» en ese nivel`);
   };
 
+  /** Lo que comprueban las restricciones y el trigger de tabs y blocks en 007_disenador.sql. */
+  const checkPage = (page: UserTab, all: UserTab[]) => {
+    const name = page.name?.trim() ?? '';
+    if (name.length < 1 || page.name.length > 40) throw new Error('El nombre de la página tiene que tener entre 1 y 40 caracteres');
+    if (page.parent_id) {
+      if (!all.some((p) => p.id === page.parent_id)) throw new Error('La página madre no existe');
+      if (subtree(all, page.id).has(page.parent_id)) throw new Error('Una página no puede ir dentro de sí misma ni de una de sus subpáginas');
+    }
+    if (page.template && all.some((p) => p.id !== page.id && p.template === page.template)) {
+      throw new Error('Esa categoría por defecto ya existe');
+    }
+  };
+
+  const checkBlock = (block: Block, pages: UserTab[]) => {
+    if (!pages.some((t) => t.id === block.tab_id)) throw new Error('La página de este bloque no existe');
+    if (!/^[a-z][a-z0-9_]{0,39}$/.test(block.type)) throw new Error('Tipo de bloque no válido');
+    const { x, y, w, h } = block;
+    if (![x, y, w, h].every(Number.isInteger) || x < 0 || y < 0 || w < 1 || h < 1 || h > 1000 || x + w > COLS) {
+      throw new Error('El bloque no cabe en la rejilla');
+    }
+  };
+
   const checkTransaction = (tx: unknown) => {
     const cat = rows('finance_categories').find((c) => c.id === field(tx, 'category_id'));
     if (!cat || cat.type !== field(tx, 'type')) throw new Error('La categoría no corresponde al tipo de movimiento');
+  };
+
+  /** Como insert_page_tree(): valida todo antes de guardar nada (todo o nada). */
+  const insertTree = (seeds: PageSeed[], parentId: string | null) => {
+    const userId = uid();
+    const pages = rows('tabs');
+    const blocks = rows('blocks');
+    const newPages: UserTab[] = [];
+    const newBlocks: Block[] = [];
+    const add = (list: PageSeed[], parent: string | null) => {
+      const siblings = [...pages, ...newPages].filter((p) => (p.parent_id ?? null) === parent && !p.section);
+      let order = siblings.reduce((m, p) => Math.max(m, p.sort_order + 1), 0);
+      for (const seed of list) {
+        const page = makeRow<'tabs'>(
+          { section: null, parent_id: parent, name: seed.name, icon: seed.icon || '📄', template: seed.template ?? null, sort_order: order++ },
+          userId,
+        );
+        checkPage(page, [...pages, ...newPages, page]);
+        newPages.push(page);
+        seed.blocks.forEach((b, i) => {
+          const block = makeRow<'blocks'>({ tab_id: page.id, type: b.type, title: b.title, content: b.content, x: b.x, y: b.y, w: b.w, h: b.h, sort_order: i }, userId);
+          checkBlock(block, [...pages, ...newPages]);
+          newBlocks.push(block);
+        });
+        add(seed.children ?? [], page.id);
+      }
+    };
+    add(seeds, parentId);
+    save('tabs', [...pages, ...newPages]);
+    save('blocks', [...blocks, ...newBlocks]);
+    return newPages.length;
   };
 
   return {
@@ -198,9 +256,8 @@ export function createLocalBackend(): Backend {
       const created = makeRow<T>(row, uid());
       if (table === 'finance_categories') checkCategory(created as FinanceCategory);
       if (table === 'transactions') checkTransaction(created);
-      if (table === 'blocks' && !rows('tabs').some((t) => t.id === field(created, 'tab_id'))) {
-        throw new Error('La pestaña de este bloque no existe');
-      }
+      if (table === 'tabs') checkPage(created as UserTab, [...rows('tabs'), created as UserTab]);
+      if (table === 'blocks') checkBlock(created as Block, rows('tabs'));
       save(table, [...rows(table), created]);
       return created;
     },
@@ -229,7 +286,10 @@ export function createLocalBackend(): Backend {
 
     async update<T extends TableName>(table: T, id: string, patch: Partial<SeedRow<T>>) {
       const next = rows(table).map((r) => (r.id === id ? ({ ...r, ...patch } as Row<T>) : r));
-      if (table === 'finance_categories') checkCategory(next.find((r) => r.id === id) as FinanceCategory);
+      const updated = next.find((r) => r.id === id);
+      if (table === 'finance_categories') checkCategory(updated as FinanceCategory);
+      if (table === 'tabs' && updated) checkPage(updated as UserTab, next as UserTab[]);
+      if (table === 'blocks' && updated) checkBlock(updated as Block, rows('tabs'));
       save(table, next);
     },
 
@@ -289,6 +349,39 @@ export function createLocalBackend(): Backend {
       save('transactions', txs);
       save('budgets', budgets);
       return moved;
+    },
+
+    async seedPages(pages) {
+      // Mismo algoritmo que seed_default_pages() en 007_disenador.sql.
+      const userId = uid();
+      if (localStorage.getItem(seededKey(userId))) return 0;
+      const created = insertTree(pages, null);
+      localStorage.setItem(seededKey(userId), '1');
+      const all = rows('tabs');
+      save(
+        'tabs',
+        all.map((t) => {
+          if (!t.section) return t;
+          const home = all.find((d) => d.template === t.section);
+          return { ...t, section: null, parent_id: home?.id ?? null, sort_order: t.sort_order + 1000 };
+        }),
+      );
+      // Bloques de la versión anterior sin posición: en dos columnas, en su orden (como la migración).
+      const byTab = new Map<string, Block[]>();
+      for (const b of rows('blocks')) byTab.set(b.tab_id, [...(byTab.get(b.tab_id) ?? []), b]);
+      const placed = new Map<string, Partial<Block>>();
+      for (const list of byTab.values()) {
+        list
+          .filter((b) => b.x === undefined)
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .forEach((b, n) => placed.set(b.id, { x: (n % 2) * 6, y: Math.floor(n / 2) * 6, w: 6, h: 6 }));
+      }
+      if (placed.size) save('blocks', rows('blocks').map((b) => ({ ...b, ...placed.get(b.id) })));
+      return created;
+    },
+
+    async insertPages(pages, parentId) {
+      return insertTree(pages, parentId);
     },
 
     async generateRecurring(until) {

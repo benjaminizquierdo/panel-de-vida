@@ -1,3 +1,4 @@
+import type { PageSeed } from '../lib/pageTemplates';
 import type { AssistantRequest, AssistantResponse, NewRow, Row, TableName, User } from '../lib/types';
 
 /**
@@ -25,6 +26,13 @@ export interface Backend {
   mergeCategory(sourceId: string, targetId: string): Promise<number>;
   /** Crea los movimientos periódicos que ya tocan hasta `until` (como mucho, mañana). Devuelve cuántos ha creado. */
   generateRecurring(until: string): Promise<number>;
+  /**
+   * Crea las categorías por defecto la primera vez que entra el usuario (y cuelga de ellas las
+   * sub-pestañas de la versión anterior). Las veces siguientes no hace nada. Devuelve las páginas creadas.
+   */
+  seedPages(pages: PageSeed[]): Promise<number>;
+  /** Crea páginas con sus bloques y subpáginas bajo `parentId` (null: primer nivel), todo o nada. */
+  insertPages(pages: PageSeed[], parentId: string | null): Promise<number>;
   /** Asistente de IA. Solo existe con Supabase (necesita la Edge Function). Lanza AssistantError. */
   assistant?(request: AssistantRequest): Promise<AssistantResponse>;
 }

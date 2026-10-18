@@ -103,6 +103,18 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
       return Number(data);
     },
 
+    async seedPages(pages) {
+      const { data, error } = await sb.rpc('seed_default_pages', { p_pages: pages });
+      if (error) fail(error);
+      return Number(data);
+    },
+
+    async insertPages(pages, parentId) {
+      const { data, error } = await sb.rpc('insert_page_tree', { p_pages: pages, p_parent: parentId });
+      if (error) fail(error);
+      return Number(data);
+    },
+
     async assistant(request) {
       const { data, error } = await sb.functions.invoke<AssistantResponse>('assistant', { body: request });
       if (!error && data) return data;

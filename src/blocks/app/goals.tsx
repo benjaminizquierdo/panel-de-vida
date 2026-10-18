@@ -1,65 +1,42 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Card, confirmDelete, Empty, IconButton, Progress } from '../components/ui';
-import { AREA_LABELS } from '../lib/defaults';
-import { toast } from '../lib/toast';
-import type { Goal, GoalHorizon, LifeArea, NewRow, Review } from '../lib/types';
-import { useTable } from '../lib/useTable';
-import { addDays, fmtDate, num, parseNum, pct, weekStart } from '../lib/utils';
+import { confirmDelete, Empty, IconButton, Progress } from '../../components/ui';
+import { blockKind, optionValue } from '../../lib/blockKinds';
+import { AREA_LABELS } from '../../lib/defaults';
+import { toast } from '../../lib/toast';
+import type { Goal, GoalHorizon, LifeArea, NewRow, Review } from '../../lib/types';
+import { useTable } from '../../lib/useTable';
+import { addDays, fmtDate, num, parseNum, pct, weekStart } from '../../lib/utils';
+import type { BlockProps } from '..';
+import { HeaderAction } from '../header';
 
-const HORIZONS: { id: GoalHorizon; label: string }[] = [
-  { id: 'anual', label: 'Objetivos anuales' },
-  { id: 'trimestral', label: 'Objetivos trimestrales' },
-];
+const HORIZON_LABEL: Record<GoalHorizon, string> = { anual: 'Anual', trimestral: 'Trimestral' };
 
-export default function Goals() {
-  return (
-    <div className="stack-lg">
-      <div className="page-head">
-        <h1>Objetivos y revisiones</h1>
-      </div>
-      <GoalsSection />
-      <WeeklyReview />
-    </div>
-  );
-}
-
-function GoalsSection() {
+export function GoalList({ block }: BlockProps) {
   const goals = useTable('goals');
+  const horizon = optionValue(blockKind(block.type), block.content, 'horizon');
+  const items = goals.rows.filter((g) => horizon === 'todos' || g.horizon === horizon);
 
+  if (items.length === 0) return <Empty>{goals.loading ? 'Cargando…' : 'Ninguno todavía.'}</Empty>;
   return (
-    <div className="grid-sidebar reverse">
-      <div className="stack">
-        {HORIZONS.map((h) => {
-          const items = goals.rows.filter((g) => g.horizon === h.id);
-          return (
-            <Card key={h.id} title={h.label}>
-              {items.length === 0 ? (
-                <Empty>{goals.loading ? 'Cargando…' : 'Ninguno todavía.'}</Empty>
-              ) : (
-                <ul className="goal-list">
-                  {items.map((g) => (
-                    <GoalItem
-                      key={g.id}
-                      goal={g}
-                      onUpdate={(patch) => goals.update(g.id, patch)}
-                      onRemove={() => {
-                        if (confirmDelete(`el objetivo «${g.title}»`)) void goals.remove(g.id);
-                      }}
-                    />
-                  ))}
-                </ul>
-              )}
-            </Card>
-          );
-        })}
-      </div>
-      <NewGoal onAdd={goals.add} />
-    </div>
+    <ul className="goal-list">
+      {items.map((g) => (
+        <GoalItem
+          key={g.id}
+          goal={g}
+          showHorizon={horizon === 'todos'}
+          onUpdate={(patch) => goals.update(g.id, patch)}
+          onRemove={() => {
+            if (confirmDelete(`el objetivo «${g.title}»`)) void goals.remove(g.id);
+          }}
+        />
+      ))}
+    </ul>
   );
 }
 
-function GoalItem({ goal, onUpdate, onRemove }: {
+function GoalItem({ goal, showHorizon, onUpdate, onRemove }: {
   goal: Goal;
+  showHorizon: boolean;
   onUpdate: (patch: Partial<NewRow<'goals'>>) => Promise<unknown>;
   onRemove: () => void;
 }) {
@@ -83,9 +60,13 @@ function GoalItem({ goal, onUpdate, onRemove }: {
     <li className="goal">
       <div className="row between">
         <div>
-          <strong>{reached ? '✅ ' : ''}{goal.title}</strong>
+          <strong>
+            {reached ? '✅ ' : ''}
+            {goal.title}
+          </strong>
           <div className="task-meta">
             <span className="tag">{AREA_LABELS[goal.area]}</span>
+            {showHorizon && <span className="tag">{HORIZON_LABEL[goal.horizon]}</span>}
             {goal.due_date && <span className="due">hasta {fmtDate(goal.due_date)}</span>}
           </div>
         </div>
@@ -119,7 +100,24 @@ function GoalItem({ goal, onUpdate, onRemove }: {
   );
 }
 
-function NewGoal({ onAdd }: { onAdd: (g: NewRow<'goals'>) => Promise<unknown> }) {
+export function GoalSummary() {
+  const goals = useTable('goals');
+  if (goals.rows.length === 0) return <Empty>{goals.loading ? 'Cargando…' : 'Aún no tienes objetivos.'}</Empty>;
+  return (
+    <ul className="list">
+      {goals.rows.slice(0, 5).map((g) => (
+        <li key={g.id} className="list-progress">
+          <span>{g.title}</span>
+          <span className="muted">{pct(g.current, g.target)} %</span>
+          <Progress value={pct(g.current, g.target)} tone={g.current >= g.target ? 'ok' : undefined} label={`Progreso de ${g.title}`} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function NewGoal() {
+  const goals = useTable('goals');
   const [title, setTitle] = useState('');
   const [horizon, setHorizon] = useState<GoalHorizon>('trimestral');
   const [area, setArea] = useState<LifeArea>('personal');
@@ -135,7 +133,7 @@ function NewGoal({ onAdd }: { onAdd: (g: NewRow<'goals'>) => Promise<unknown> })
       toast('La meta tiene que ser un número mayor que 0', 'error');
       return;
     }
-    const created = await onAdd({ title: title.trim(), horizon, area, target: t, current: 0, unit: unit.trim(), due_date: due || null });
+    const created = await goals.add({ title: title.trim(), horizon, area, target: t, current: 0, unit: unit.trim(), due_date: due || null });
     if (created) {
       setTitle('');
       setTarget('');
@@ -145,48 +143,46 @@ function NewGoal({ onAdd }: { onAdd: (g: NewRow<'goals'>) => Promise<unknown> })
   };
 
   return (
-    <Card title="Nuevo objetivo">
-      <form onSubmit={submit} className="stack">
+    <form onSubmit={submit} className="stack">
+      <label className="field">
+        <span>Objetivo</span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Correr una media maratón" required />
+      </label>
+      <div className="field-row">
         <label className="field">
-          <span>Objetivo</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Correr una media maratón" required />
+          <span>Horizonte</span>
+          <select value={horizon} onChange={(e) => setHorizon(e.target.value as GoalHorizon)}>
+            <option value="trimestral">Trimestral</option>
+            <option value="anual">Anual</option>
+          </select>
         </label>
-        <div className="field-row">
-          <label className="field">
-            <span>Horizonte</span>
-            <select value={horizon} onChange={(e) => setHorizon(e.target.value as GoalHorizon)}>
-              <option value="trimestral">Trimestral</option>
-              <option value="anual">Anual</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>Área</span>
-            <select value={area} onChange={(e) => setArea(e.target.value as LifeArea)}>
-              {Object.entries(AREA_LABELS).map(([id, label]) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="field-row">
-          <label className="field">
-            <span>Meta</span>
-            <input inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="21" required />
-          </label>
-          <label className="field">
-            <span>Unidad</span>
-            <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="km" />
-          </label>
-        </div>
         <label className="field">
-          <span>Fecha límite (opcional)</span>
-          <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+          <span>Área</span>
+          <select value={area} onChange={(e) => setArea(e.target.value as LifeArea)}>
+            {Object.entries(AREA_LABELS).map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
         </label>
-        <button className="btn primary">Crear objetivo</button>
-      </form>
-    </Card>
+      </div>
+      <div className="field-row">
+        <label className="field">
+          <span>Meta</span>
+          <input inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="21" required />
+        </label>
+        <label className="field">
+          <span>Unidad</span>
+          <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="km" />
+        </label>
+      </div>
+      <label className="field">
+        <span>Fecha límite (opcional)</span>
+        <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+      </label>
+      <button className="btn primary">Crear objetivo</button>
+    </form>
   );
 }
 
@@ -201,7 +197,7 @@ const REVIEW_FIELDS: { key: keyof ReviewDraft; label: string; placeholder: strin
   { key: 'next_focus', label: '🎯 Foco de la próxima semana', placeholder: 'Las 1–3 cosas que más importan' },
 ];
 
-function WeeklyReview() {
+export function WeeklyReview() {
   const reviews = useTable('reviews');
   const thisWeek = weekStart();
   const [week, setWeek] = useState(thisWeek);
@@ -209,11 +205,7 @@ function WeeklyReview() {
   const [draft, setDraft] = useState<ReviewDraft>(EMPTY_REVIEW);
 
   useEffect(() => {
-    setDraft(
-      existing
-        ? { wins: existing.wins, challenges: existing.challenges, lessons: existing.lessons, next_focus: existing.next_focus }
-        : EMPTY_REVIEW,
-    );
+    setDraft(existing ? { wins: existing.wins, challenges: existing.challenges, lessons: existing.lessons, next_focus: existing.next_focus } : EMPTY_REVIEW);
   }, [existing, week]);
 
   const save = async (e: FormEvent) => {
@@ -230,9 +222,8 @@ function WeeklyReview() {
   const label = (ws: string) => `${fmtDate(ws)} – ${fmtDate(addDays(ws, 6))}`;
 
   return (
-    <Card
-      title="Revisión semanal"
-      action={
+    <>
+      <HeaderAction>
         <div className="row">
           <IconButton label="Semana anterior" onClick={() => setWeek(addDays(week, -7))}>
             ←
@@ -242,19 +233,13 @@ function WeeklyReview() {
             →
           </IconButton>
         </div>
-      }
-    >
+      </HeaderAction>
       <form onSubmit={save} className="stack">
         <div className="review-grid">
           {REVIEW_FIELDS.map((f) => (
             <label key={f.key} className="field">
               <span>{f.label}</span>
-              <textarea
-                rows={3}
-                value={draft[f.key]}
-                placeholder={f.placeholder}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-              />
+              <textarea rows={3} value={draft[f.key]} placeholder={f.placeholder} onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))} />
             </label>
           ))}
         </div>
@@ -276,6 +261,6 @@ function WeeklyReview() {
           ))}
         </div>
       )}
-    </Card>
+    </>
   );
 }

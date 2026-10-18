@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { describeError } from '../lib/errors';
+import { reloadTables } from '../lib/useTable';
 
 /**
  * Si algo falla al pintar, muestra qué ha pasado y cómo seguir en lugar de dejar la página en blanco.
@@ -10,6 +11,12 @@ export default class ErrorBoundary extends Component<{ scope?: string; children:
 
   static getDerivedStateFromError(error: unknown) {
     return { error, copied: false };
+  }
+
+  /** Muchos fallos vienen de los datos: se vuelven a pedir antes de pintar otra vez. */
+  async retry() {
+    await reloadTables();
+    this.setState({ error: null });
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
@@ -31,7 +38,7 @@ export default class ErrorBoundary extends Component<{ scope?: string; children:
         {this.props.scope && <p className="muted small">Solo ha fallado {this.props.scope}; el resto de la app sigue funcionando.</p>}
         <div className="row center wrap">
           {this.props.scope && (
-            <button type="button" className="btn ghost" onClick={() => this.setState({ error: null })}>
+            <button type="button" className="btn ghost" onClick={() => void this.retry()}>
               Volver a intentar
             </button>
           )}

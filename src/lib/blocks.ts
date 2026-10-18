@@ -1,8 +1,6 @@
-// Tipos de bloque de las sub-pestañas y su contenido. Funciones puras (sin React) para
-// poder probarlas: tests/blocks.test.ts. Cada tipo nuevo se añade aquí, en
-// src/blocks/ (su componente) y en el check `blocks_type_check` de la base de datos.
+// Contenido de los bloques básicos (notas, checklist, enlaces) y orden de filas. Funciones puras
+// (sin React) para poder probarlas: tests/blocks.test.ts. El catálogo de tipos está en blockKinds.ts.
 
-import type { BlockType } from './types';
 import { weekStart } from './utils';
 
 export interface NotesContent {
@@ -32,40 +30,6 @@ export interface LinkItem {
 export interface LinksContent {
   links: LinkItem[];
 }
-
-export interface BlockKind {
-  type: BlockType;
-  name: string;
-  icon: string;
-  description: string;
-  empty: () => Record<string, unknown>;
-}
-
-export const BLOCK_KINDS: BlockKind[] = [
-  {
-    type: 'notas',
-    name: 'Notas',
-    icon: '📝',
-    description: 'Texto libre: apuntes, tu rutina, ideas… Se guarda solo mientras escribes.',
-    empty: (): NotesContent & Record<string, unknown> => ({ text: '' }),
-  },
-  {
-    type: 'checklist',
-    name: 'Checklist',
-    icon: '☑️',
-    description: 'Lista de cosas por hacer. Puede reiniciarse sola cada día o cada semana.',
-    empty: (): ChecklistContent & Record<string, unknown> => ({ items: [], reset: 'nunca' }),
-  },
-  {
-    type: 'enlaces',
-    name: 'Enlaces',
-    icon: '🔗',
-    description: 'Accesos directos a webs, documentos o vídeos que usas a menudo.',
-    empty: (): LinksContent & Record<string, unknown> => ({ links: [] }),
-  },
-];
-
-export const blockKind = (type: string) => BLOCK_KINDS.find((k) => k.type === type);
 
 export const RESET_LABEL: Record<ChecklistReset, string> = {
   nunca: 'No se reinicia',

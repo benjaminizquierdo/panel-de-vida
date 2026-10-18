@@ -2,17 +2,19 @@
 
 Plataforma web para gestionar tu vida personal en un solo sitio: **proyectos y tareas, hábitos y salud, objetivos con revisión semanal, y finanzas en euros**. Cada persona se registra con su cuenta y **solo ve sus propios datos**.
 
+Todo se organiza en **categorías que diseñas tú**: cada una es una página montada con bloques que arrastras, colocas y redimensionas, con subcategorías sin límite de niveles (ver [Diseñador de categorías](#diseñador-de-categorías)). Cada cuenta empieza con estas, que se pueden cambiar o borrar como cualquier otra:
+
 - **Inicio**: lo más importante del día, hábitos de hoy, tareas que vencen, proyectos activos y resumen del mes.
 - **Proyectos**: tablero con columnas Pendiente → En curso → Hecha, prioridades, fechas límite y progreso por proyecto.
 - **Hábitos y salud**: cuadrícula semanal con rachas 🔥, registro diario de sueño, energía, ejercicio y peso, y gráficos de 14 días.
 - **Objetivos**: metas anuales y trimestrales con progreso, y plantilla de revisión semanal (logros, dificultades, aprendizajes, foco).
 - **Finanzas**: gastos e ingresos por categoría, presupuesto mensual por categoría, balance y evolución de 6 meses. Las **categorías son tuyas**: créalas con icono y color, añade subcategorías (p. ej. Comida → Supermercado), reordénalas, archívalas o fusiónalas con otra conservando los movimientos. **Movimientos periódicos** (suscripciones, alquiler, nómina) que se apuntan solos cada semana, mes o año. **Importa movimientos bancarios** desde el export de tu banco (por ahora, Trade Republic; ver abajo).
-- **Sub-pestañas tuyas** en cada pestaña principal: con «Personalizar» creas, por ejemplo, «Gym» dentro de Hábitos y salud y la montas con bloques de **notas, checklist y enlaces** (ver abajo).
+- **Categorías tuyas**: «Viajes › Japón 2027 › Itinerario», «Gym», «Estudios»… con bloques de notas, checklist y enlaces, y cualquier bloque de la app (presupuesto, hábitos de hoy, revisión semanal…).
 - **Asistente de IA** 💬: un chat (con Claude) al que le cuentas lo que has hecho —«hoy he corrido 30 minutos y me he gastado 12 € en el almuerzo»— y lo registra en tu panel; también responde preguntas sobre tus datos.
 
 Cada cuenta nueva empieza con 5 hábitos, 8 categorías de presupuesto y 2 objetivos de ejemplo, todo editable.
 
-Si algo falla, la app no se queda en blanco: explica qué ha pasado cuando se puede saber (sin conexión, versión a medio cargar, datos con un formato inesperado, sesión caducada…), qué hacer, y guarda los detalles técnicos para copiarlos. Si falla una pestaña, el resto de la app sigue funcionando (`src/lib/errors.ts` y `src/components/ErrorBoundary.tsx`).
+Si algo falla, la app no se queda en blanco: explica qué ha pasado cuando se puede saber (sin conexión, versión a medio cargar, datos con un formato inesperado, sesión caducada, base de datos sin la última migración…), qué hacer, y guarda los detalles técnicos para copiarlos. Si falla un bloque o una página, el resto de la app sigue funcionando (`src/lib/errors.ts` y `src/components/ErrorBoundary.tsx`).
 
 ## Arquitectura
 
@@ -84,16 +86,23 @@ En **Finanzas → Periódicos** (o marcando «Es periódico» al añadir un movi
 - **Sin duplicados**: cada movimiento generado lleva `source = 'recurrente'` y como id externo `<id del periódico>:<fecha>`, con la misma restricción única que la importación. Si borras uno generado, no vuelve a aparecer.
 - El asistente también los crea («apunta Netflix 12,99 € cada mes»).
 
-## Sub-pestañas y bloques
+## Diseñador de categorías
 
-Cada pestaña principal tiene un botón **Personalizar**. Al pulsarlo:
+Cada página es una **categoría**. El menú lateral muestra el árbol (en el móvil se abre con ☰):
 
-- **+ Sub-pestaña** crea una sub-pestaña con nombre e icono (hasta 12 por pestaña). Aparece en una barra junto a la vista fija de la pestaña, que no cambia. Las flechas ← → la reordenan y «Nombre e icono» la renombra o la elimina, con sus bloques.
-- **Añadir bloque** abre la galería: **Notas** (texto libre que se guarda solo), **Checklist** (puede reiniciarse sola cada día o cada lunes, sin tareas programadas: cada elemento recuerda el día en que se marcó) y **Enlaces** (solo direcciones http/https, que se abren en otra pestaña).
-- Cada bloque tiene **↑ ↓** para ordenarlo, sin arrastrar (más cómodo en el móvil y accesible con teclado), y **⚙** para cambiar su título, el reinicio de la checklist o eliminarlo.
-- **Listo** cierra el modo personalizar; los bloques se siguen usando con normalidad (escribir, marcar, añadir enlaces).
+- **＋ Nueva categoría** crea una de primer nivel; el **＋** de cada fila, una subpágina dentro. No hay límite de niveles; arriba de cada página, las migas de pan (Viajes › Japón 2027) y sus subpáginas.
+- **Reordenar**: en el ordenador, arrastra una fila del árbol: sobre la mitad de otra la mete dentro; arriba o abajo, antes o después. También desde **⚙ Página → Dentro de**.
+- **✎ Personalizar** abre el modo diseño de la página:
+  - **En el ordenador (panel libre)**: el catálogo aparece a la derecha; arrastra un bloque hasta el sitio exacto o haz clic para ponerlo en el primer hueco. Cada bloque se mueve arrastrando su cabecera (⠿) y se redimensiona por el borde o la esquina; los demás suben solos a rellenar huecos.
+  - **En el móvil**: los bloques se apilan a todo el ancho; **＋ Bloque** abre el catálogo y las flechas **↑ ↓** cambian el orden.
+  - **⚙** de cada bloque: título, ajustes propios (reinicio de la checklist, qué objetivos mostrar), ancho y alto. El alto es **automático** (mide lo que su contenido) hasta que lo estiras a mano o eliges «Fijo»; los gráficos tienen alto fijo.
+  - **⚙ Página**: nombre, icono, dónde va, añadir subpágina, **restablecer el diseño original** (en las categorías por defecto) y eliminar.
 
-La app recuerda la última sub-pestaña abierta de cada pestaña. Los datos están en las tablas `tabs` y `blocks` (migración 006); el contenido de cada bloque es JSON con la forma que define su tipo en `src/lib/blocks.ts`. La tabla `tabs` ya admite pestañas principales propias para una versión futura.
+**Bloques disponibles**: básicos (notas que se guardan solas, checklist que puede reiniciarse cada día o cada lunes, enlaces http/https) y los de la app: saludo, lo más importante de hoy, resumen de hoy, próximas fechas límite, proyectos activos, lista de proyectos, tablero de tareas, hábitos de hoy y de la semana, registro de salud con sus medias y gráficos, objetivos (todos, anuales o trimestrales), nuevo objetivo, revisión semanal, y en finanzas: selector de mes (lo siguen los demás bloques de finanzas de la página), resumen del mes, nuevo movimiento, presupuesto, últimos 6 meses, movimientos del mes, periódicos, categorías e importación. Todos leen los mismos datos: apuntar un gasto en un bloque actualiza al momento el resumen y la lista de otros bloques.
+
+**Categorías por defecto**: Inicio, Proyectos, Hábitos y salud, Objetivos y Finanzas (con Periódicos, Categorías e Importación movimientos bancarios dentro). Se crean la primera vez que entra cada cuenta, con `seed_default_pages()`, a partir de `src/lib/pageTemplates.ts`. Borrarlas **no borra tus datos** (movimientos, hábitos, tareas…) y desde el menú lateral, **↺ Recuperar categorías por defecto**, vuelven con su diseño original.
+
+Los datos están en `tabs` (páginas, con `parent_id` para anidar y `template` para las de por defecto) y `blocks` (tipo, título, contenido JSON y posición `x, y, w, h` en una rejilla de 12 columnas), migraciones 006 y 007. Al aplicar la 007, las sub-pestañas de la versión anterior pasan a ser subpáginas de su categoría, con sus bloques.
 
 ## Activar el asistente de IA
 
@@ -147,7 +156,7 @@ npm run panel -- add goals '{"title": "Correr 10 km", "horizon": "trimestral", "
 npm run typecheck       # tipos de TypeScript
 npm run test:db         # ejecuta los .sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
 npm run test:assistant  # ejecuta la Edge Function en Deno contra Supabase y Claude simulados
-npm run test:lib        # lector de CSV e importador, periódicos, bloques y mensajes de error
+npm run test:lib        # importador, periódicos, bloques, mensajes de error, rejilla del panel y árbol de páginas
 npm run build           # build de producción en dist/
 ```
 
@@ -158,11 +167,12 @@ npm run build           # build de producción en dist/
 ```
 src/
   backend/        Contrato común + implementación Supabase y modo demo (localStorage)
-  components/     UI compartida, acceso, avisos, chat del asistente y barra de sub-pestañas (SectionTabs)
+  components/     UI compartida, acceso, avisos, chat del asistente, menú lateral, panel de bloques y catálogo
   assets/banks/   Logos de los bancos del importador
-  blocks/         Componente de cada tipo de bloque (notas, checklist, enlaces)
-  lib/            Tipos, valores por defecto, utilidades, hooks de datos, importador, bancos y bloques
-  pages/          Inicio, Proyectos, Hábitos, Objetivos, Finanzas y la vista de una sub-pestaña (CustomTab)
+  blocks/         Componente de cada tipo de bloque: básicos y, en blocks/app, los de la app
+  lib/            Tipos, valores por defecto, utilidades, hooks de datos, importador, bancos, catálogo de bloques,
+                  rejilla (layout.ts), árbol de páginas y categorías por defecto (pageTemplates.ts)
+  pages/          Vista de una página (PageView) y las vistas grandes de finanzas que usan sus bloques
 supabase/
   migrations/
     001_base.sql        Tablas, Row Level Security y datos iniciales de cada cuenta
@@ -171,6 +181,7 @@ supabase/
     004_importacion.sql Origen e id externo de cada movimiento (sin duplicados) y reglas por comercio
     005_periodicos.sql  Movimientos periódicos y su generación diaria con pg_cron
     006_pestanas.sql    Sub-pestañas personalizadas y sus bloques
+    007_disenador.sql   Árbol de páginas sin límite, posición y tamaño de los bloques, categorías por defecto
   functions/assistant/
     index.ts      Servidor: sesión, cupo, bucle de herramientas con Claude
     tools.ts      Herramientas (registrar gastos, periódicos, hábitos, salud, tareas, objetivos; consultar)
@@ -184,11 +195,14 @@ tests/
   recurring.test.ts  Test del calendario de los periódicos
   blocks.test.ts     Test de los bloques (reinicio de la checklist, enlaces seguros, orden)
   errors.test.ts     Test de los mensajes de error
+  layout.test.ts     Test de la rejilla del panel (compactar, huecos, flechas del móvil)
+  pages.test.ts      Test del árbol de páginas, del catálogo de bloques y de las categorías por defecto
 ```
 
 ## Personalizar
 
 - **Hábitos, categorías y presupuestos con los que empieza cada cuenta**: `src/lib/defaults.ts` (modo demo) y, para Supabase, `create_default_finance_categories()` y `seed_new_user()` en una migración nueva. Cada usuario puede después cambiar sus categorías desde Finanzas → Categorías.
 - **Añadir un banco al importador**: escribe su lector en `src/lib/importer.ts` (reconocer la cabecera y convertir cada fila; `readGeneric()` ya resuelve columnas de fecha, importe y texto), pon su logo en `src/assets/banks/` y añádelo a `BANKS` en `src/lib/banks.ts` con sus instrucciones. Su `id` queda guardado como origen de los movimientos importados, así que no se cambia una vez publicado.
-- **Añadir un tipo de bloque**: su descripción y contenido vacío en `BLOCK_KINDS` (`src/lib/blocks.ts`), su componente en `src/blocks/` (registrado en `src/blocks/index.tsx`), el tipo en `BlockType` (`src/lib/types.ts`) y, en una migración nueva, el tipo en el check `blocks_type_check`.
+- **Añadir un tipo de bloque**: su nombre, descripción, grupo, tamaño y ajustes en `BLOCK_KINDS` (`src/lib/blockKinds.ts`) y su componente en `src/blocks/` (registrado en `src/blocks/index.tsx`). No hace falta migración: la base de datos acepta cualquier tipo con forma de identificador.
+- **Cambiar las categorías por defecto**: `DEFAULT_PAGES` en `src/lib/pageTemplates.ts` (afecta a las cuentas nuevas y a «Restaurar»).
 - **Tema**: los colores están como variables CSS al principio de `src/styles.css`, con versión clara y oscura (sigue el tema del sistema).

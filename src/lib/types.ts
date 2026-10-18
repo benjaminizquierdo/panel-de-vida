@@ -125,24 +125,32 @@ export interface Highlight extends Base {
 }
 
 /** Sub-pestaña creada por el usuario dentro de una pestaña principal fija (006_pestanas.sql). */
+/** Página («categoría») del árbol del usuario. Las de primer nivel tienen `parent_id` null. */
 export interface UserTab extends Base {
-  /** Id de la pestaña principal (ver lib/tabs.ts). Null queda para pestañas principales propias (futuro). */
+  /** Obsoleta (migración 006): sub-pestaña de una pestaña fija. La 007 la pasa a `parent_id`. */
   section: string | null;
   parent_id: string | null;
   name: string;
   icon: string;
   sort_order: number;
+  /** Categoría por defecto de la que sale (ver lib/pageTemplates.ts); null en las creadas por el usuario. */
+  template: string | null;
 }
 
-export type BlockType = 'notas' | 'checklist' | 'enlaces';
+/** Tipo de bloque: ver lib/blockKinds.ts. Los desconocidos (de una versión más nueva) se muestran como aviso. */
+export type BlockType = string;
 
-/** Bloque de una sub-pestaña. `content` tiene la forma que define su tipo en lib/blocks.ts. */
+/** Bloque de una página. `content` tiene la forma que define su tipo; x, y, w, h: rejilla de 12 columnas. */
 export interface Block extends Base {
   tab_id: string;
   type: BlockType;
   title: string;
   content: Record<string, unknown>;
   sort_order: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /** Cada clave es el nombre de una tabla de Supabase (ver supabase/migrations). */

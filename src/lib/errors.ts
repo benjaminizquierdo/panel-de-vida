@@ -25,6 +25,16 @@ const KNOWN: { test: (name: string, message: string) => boolean; describe: (mess
     }),
   },
   {
+    // La app es más nueva que la base de datos: falta ejecutar una migración en Supabase.
+    test: (_, m) =>
+      /Could not find the (function|table|'[^']+' column)|schema cache|(relation|column|function) .* does not exist|PGRST20[25]/i.test(m),
+    describe: () => ({
+      title: 'La base de datos no está al día con esta versión de la app.',
+      advice:
+        'Falta aplicar una migración en Supabase. Quien mantiene la app tiene que ejecutar las migraciones pendientes de supabase/migrations en el SQL Editor y después recargar la página.',
+    }),
+  },
+  {
     test: (_, m) => /Failed to fetch|NetworkError|Network request failed|Load failed|ERR_INTERNET_DISCONNECTED/i.test(m),
     describe: () => ({
       title: 'No hay conexión con el servidor.',

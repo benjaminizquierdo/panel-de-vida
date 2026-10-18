@@ -23,6 +23,10 @@ const cases: [unknown, string][] = [
   [new Error('Objects are not valid as a React child (found: object with keys {roto}).'), 'Algunos datos no tienen el formato que la app esperaba.'],
   [new Error('JWT expired'), 'Tu sesión ha caducado.'],
   [named('QuotaExceededError', "Failed to execute 'setItem' on 'Storage'"), 'El navegador no tiene espacio para guardar más datos.'],
+  // Falta la migración 007 en Supabase (lo que devuelve PostgREST).
+  [new Error('Could not find the function public.seed_default_pages(p_pages) in the schema cache'), 'La base de datos no está al día con esta versión de la app.'],
+  [new Error("Could not find the 'template' column of 'tabs' in the schema cache"), 'La base de datos no está al día con esta versión de la app.'],
+  [new Error('relation "public.user_settings" does not exist'), 'La base de datos no está al día con esta versión de la app.'],
   [new Error('Algo raro'), 'Algo ha fallado en la app.'],
   ['texto suelto', 'Algo ha fallado en la app.'],
   [{ code: 42 }, 'Algo ha fallado en la app.'],
