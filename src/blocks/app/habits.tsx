@@ -7,11 +7,15 @@ import { tooltipStyle, useChartColors } from '../../lib/useChartColors';
 import { useHabits } from '../../lib/useHabits';
 import { useTable } from '../../lib/useTable';
 import { fmtDay, lastDays, num, parseNum, pct, sumBy, today } from '../../lib/utils';
+import { filterValues } from '../../lib/blockKinds';
+import type { BlockProps } from '..';
 import { HeaderAction } from '../header';
 
-export function HabitsToday() {
+export function HabitsToday({ block }: BlockProps) {
   const day = today();
-  const { habits, active, isDone, toggle, streakOf } = useHabits();
+  const { habits, active: all, isDone, toggle, streakOf } = useHabits();
+  const chosen = filterValues(block.content, 'habits');
+  const active = chosen.length ? all.filter((h) => chosen.includes(h.id)) : all;
 
   if (active.length === 0) return <Empty>{habits.loading ? 'Cargando…' : 'Aún no tienes hábitos. Créalos en el bloque «Hábitos · últimos 7 días».'}</Empty>;
   return (

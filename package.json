@@ -11,7 +11,7 @@
     "panel": "node --env-file=.env.local scripts/panel.mjs",
     "test:db": "node tests/schema.test.mjs",
     "test:assistant": "npx -y deno run --config supabase/functions/assistant/deno.json --allow-net --allow-env --allow-read tests/assistant.test.ts",
-    "test:lib": "npx -y deno run --no-config --sloppy-imports tests/importer.test.ts && npx -y deno run --no-config --sloppy-imports tests/recurring.test.ts && npx -y deno run --no-config --sloppy-imports tests/blocks.test.ts && npx -y deno run --no-config --sloppy-imports tests/errors.test.ts && npx -y deno run --no-config --sloppy-imports tests/layout.test.ts && npx -y deno run --no-config --sloppy-imports tests/pages.test.ts"
+    "test:lib": "npx -y deno run --no-config --sloppy-imports tests/importer.test.ts && npx -y deno run --no-config --sloppy-imports tests/recurring.test.ts && npx -y deno run --no-config --sloppy-imports tests/blocks.test.ts && npx -y deno run --no-config --sloppy-imports tests/errors.test.ts && npx -y deno run --no-config --sloppy-imports tests/layout.test.ts && npx -y deno run --no-config --sloppy-imports tests/pages.test.ts && npx -y deno run --no-config --sloppy-imports tests/insights.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

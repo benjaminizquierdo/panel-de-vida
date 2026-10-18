@@ -98,7 +98,25 @@ Cada página es una **categoría**. El menú lateral muestra el árbol (en el m�
   - **⚙** de cada bloque: título, ajustes propios (reinicio de la checklist, qué objetivos mostrar), ancho y alto. El alto es **automático** (mide lo que su contenido) hasta que lo estiras a mano o eliges «Fijo»; los gráficos tienen alto fijo.
   - **⚙ Página**: nombre, icono, dónde va, añadir subpágina, **restablecer el diseño original** (en las categorías por defecto) y eliminar.
 
-**Bloques disponibles**: básicos (notas que se guardan solas, checklist que puede reiniciarse cada día o cada lunes, enlaces http/https) y los de la app: saludo, lo más importante de hoy, resumen de hoy, próximas fechas límite, proyectos activos, lista de proyectos, tablero de tareas, hábitos de hoy y de la semana, registro de salud con sus medias y gráficos, objetivos (todos, anuales o trimestrales), nuevo objetivo, revisión semanal, y en finanzas: selector de mes (lo siguen los demás bloques de finanzas de la página), resumen del mes, nuevo movimiento, presupuesto, últimos 6 meses, movimientos del mes, periódicos, categorías e importación. Todos leen los mismos datos: apuntar un gasto en un bloque actualiza al momento el resumen y la lista de otros bloques.
+**Bloques que cruzan datos de toda la app** (marcados como «Nuevo» en el catálogo):
+
+| Bloque | Qué hace |
+|---|---|
+| 📅 Agenda de hoy | Lo más importante, tareas que vencen (y vencidas), hábitos pendientes y cargos de hoy y mañana, para marcarlos ahí mismo |
+| 🏅 Puntuación del día | Nota de 0 a 100: hábitos (40 %), lo más importante (20 %), tareas del día (20 %) y gasto dentro del presupuesto diario (20 %), con la semana |
+| ⏳ Progreso del año | Semana, mes y año transcurridos frente al progreso de tus objetivos anuales |
+| ⏱️ Cuenta atrás | Días que faltan para tus fechas (viajes, exámenes…) |
+| 🗓️ Calendario del mes | Tareas con fecha, cargos periódicos (cobrados y por cobrar) y revisiones |
+| 🔗 Qué te funciona | Compara tu sueño, energía y gasto variable los días que cumples cada hábito frente a los que no (90 días, mínimo 5 días a cada lado; es correlación, no causa) |
+| 🔥 Cadena de un hábito | 26 semanas de un hábito, racha actual y mejor racha |
+| 🟩 Año en píxeles | Cada día del año con el color de cuántos hábitos cumpliste |
+| 💳 Próximos cargos | Cargos e ingresos periódicos de los próximos 30 días |
+| 📺 Suscripciones | Coste al mes y al año de tus gastos periódicos y cuánto ahorrarías quitando el más caro |
+| 📉 Ritmo de gasto | Previsión de fin de mes (fijo cobrado + fijo pendiente + variable al ritmo actual) frente al presupuesto |
+| 🍩 Gasto por categoría | Gráfico circular del mes |
+| 🐷 Hucha | Objetivo de ahorro en € con aportaciones y lo que hay que apartar al mes para llegar a la fecha |
+
+Además están los básicos (notas, checklist que puede reiniciarse cada día o cada lunes, enlaces) y los bloques de la app que tienen sentido fuera de su página, muchos con **filtro**: en una página «Viajes» puedes poner «Movimientos del mes» solo de la categoría Viajes, el tablero de un único proyecto o los hábitos que quieras. Las pantallas completas (importador, gestor de categorías, periódicos, formulario de salud…) siguen en su categoría por defecto, pero no se ofrecen en el catálogo. Los cálculos están en `src/lib/insights.ts` (probados en `tests/insights.test.ts`).
 
 **Categorías por defecto**: Inicio, Proyectos, Hábitos y salud, Objetivos y Finanzas (con Periódicos, Categorías e Importación movimientos bancarios dentro). Se crean la primera vez que entra cada cuenta, con `seed_default_pages()`, a partir de `src/lib/pageTemplates.ts`. Borrarlas **no borra tus datos** (movimientos, hábitos, tareas…) y desde el menú lateral, **↺ Recuperar categorías por defecto**, vuelven con su diseño original.
 
@@ -156,7 +174,7 @@ npm run panel -- add goals '{"title": "Correr 10 km", "horizon": "trimestral", "
 npm run typecheck       # tipos de TypeScript
 npm run test:db         # ejecuta los .sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
 npm run test:assistant  # ejecuta la Edge Function en Deno contra Supabase y Claude simulados
-npm run test:lib        # importador, periódicos, bloques, mensajes de error, rejilla del panel y árbol de páginas
+npm run test:lib        # importador, periódicos, bloques, errores, rejilla, árbol de páginas y cálculos que cruzan datos
 npm run build           # build de producción en dist/
 ```
 
@@ -197,6 +215,7 @@ tests/
   errors.test.ts     Test de los mensajes de error
   layout.test.ts     Test de la rejilla del panel (compactar, huecos, flechas del móvil)
   pages.test.ts      Test del árbol de páginas, del catálogo de bloques y de las categorías por defecto
+  insights.test.ts   Test de correlaciones, puntuación del día, rachas, próximos cargos y ritmo de gasto
 ```
 
 ## Personalizar

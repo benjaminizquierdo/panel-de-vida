@@ -13,8 +13,10 @@ const HORIZON_LABEL: Record<GoalHorizon, string> = { anual: 'Anual', trimestral:
 
 export function GoalList({ block }: BlockProps) {
   const goals = useTable('goals');
-  const horizon = optionValue(blockKind(block.type), block.content, 'horizon');
-  const items = goals.rows.filter((g) => horizon === 'todos' || g.horizon === horizon);
+  const kind = blockKind(block.type);
+  const horizon = optionValue(kind, block.content, 'horizon');
+  const area = optionValue(kind, block.content, 'area');
+  const items = goals.rows.filter((g) => (horizon === 'todos' || g.horizon === horizon) && (area === 'todas' || g.area === area));
 
   if (items.length === 0) return <Empty>{goals.loading ? 'Cargando…' : 'Ninguno todavía.'}</Empty>;
   return (
@@ -100,12 +102,14 @@ function GoalItem({ goal, showHorizon, onUpdate, onRemove }: {
   );
 }
 
-export function GoalSummary() {
+export function GoalSummary({ block }: BlockProps) {
   const goals = useTable('goals');
-  if (goals.rows.length === 0) return <Empty>{goals.loading ? 'Cargando…' : 'Aún no tienes objetivos.'}</Empty>;
+  const area = optionValue(blockKind(block.type), block.content, 'area');
+  const items = goals.rows.filter((g) => area === 'todas' || g.area === area);
+  if (items.length === 0) return <Empty>{goals.loading ? 'Cargando…' : 'Aún no tienes objetivos.'}</Empty>;
   return (
     <ul className="list">
-      {goals.rows.slice(0, 5).map((g) => (
+      {items.slice(0, 5).map((g) => (
         <li key={g.id} className="list-progress">
           <span>{g.title}</span>
           <span className="muted">{pct(g.current, g.target)} %</span>

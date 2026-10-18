@@ -60,6 +60,8 @@ export default function PageView({ page, pages, startEditing, onEditPage, onAddC
     });
     if (created) {
       setCatalog(false);
+      // Si el bloque se puede filtrar (una categoría, un hábito…), se abren sus ajustes para elegirlo.
+      if (kind.filters?.length) setSettings(created.id);
       toast(`Bloque «${kind.name}» añadido`);
     }
   };

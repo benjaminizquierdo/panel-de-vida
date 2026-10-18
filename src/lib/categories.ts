@@ -40,3 +40,7 @@ export const categoryOptions = (all: FinanceCategory[], type: TxType) =>
     { id: p.id, label: `${p.icon} ${p.name}` },
     ...p.children.map((c) => ({ id: c.id, label: `   ↳ ${c.icon} ${c.name}` })),
   ]);
+
+/** Para filtrar por categoría: ¿es `id` la categoría `filter` o una de sus subcategorías? Sin filtro, todas valen. */
+export const inCategory = (byId: Map<string, FinanceCategory>, filter: string) => (id: string) =>
+  !filter || id === filter || byId.get(id)?.parent_id === filter;

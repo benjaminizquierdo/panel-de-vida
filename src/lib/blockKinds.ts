@@ -7,7 +7,7 @@ export type BlockGroup = 'basicos' | 'inicio' | 'proyectos' | 'habitos' | 'objet
 
 export const BLOCK_GROUPS: { id: BlockGroup; label: string; hint: string }[] = [
   { id: 'basicos', label: 'Básicos', hint: 'Para montar cualquier página a tu manera' },
-  { id: 'inicio', label: 'Tu día', hint: 'Resúmenes de toda la app' },
+  { id: 'inicio', label: 'Tu día', hint: 'Lo de hoy y el tiempo que pasa, juntando toda la app' },
   { id: 'proyectos', label: 'Proyectos y tareas', hint: '' },
   { id: 'habitos', label: 'Hábitos y salud', hint: '' },
   { id: 'objetivos', label: 'Objetivos', hint: '' },
@@ -20,6 +20,33 @@ export interface BlockOption {
   label: string;
   choices: { value: string; label: string; hint: string }[];
 }
+
+/**
+ * Filtro que se elige entre tus propios datos (se guarda en `content[key]`): con él, un bloque de
+ * la app muestra solo lo de una categoría, un proyecto, unos hábitos… dentro de tu página.
+ */
+export interface BlockFilter {
+  key: string;
+  label: string;
+  source: 'project' | 'expense_category' | 'habits' | 'habit' | 'savings_goal';
+  /** Texto de «sin filtro» (todos). Sin él, hay que elegir uno. */
+  allLabel?: string;
+}
+
+export const AREA_OPTION: BlockOption = {
+  key: 'area',
+  label: 'Área',
+  choices: [
+    { value: 'todas', label: 'Todas', hint: 'Objetivos de todas las áreas.' },
+    { value: 'proyectos', label: 'Proyectos', hint: 'Solo los del área Proyectos.' },
+    { value: 'salud', label: 'Salud', hint: 'Solo los del área Salud.' },
+    { value: 'finanzas', label: 'Finanzas', hint: 'Solo los del área Finanzas.' },
+    { value: 'personal', label: 'Personal', hint: 'Solo los del área Personal.' },
+  ],
+};
+
+const PROJECT_FILTER: BlockFilter = { key: 'project', label: 'Proyecto', source: 'project', allLabel: 'Todos los proyectos' };
+const CATEGORY_FILTER: BlockFilter = { key: 'category', label: 'Categoría de gasto', source: 'expense_category', allLabel: 'Todas las categorías' };
 
 export interface BlockKind {
   type: string;
@@ -42,6 +69,11 @@ export interface BlockKind {
   /** Contenido inicial. */
   empty?: () => Record<string, unknown>;
   options?: BlockOption[];
+  filters?: BlockFilter[];
+  /** false: no se ofrece en el catálogo (pantallas completas que viven en su categoría por defecto). */
+  catalog?: boolean;
+  /** Se marca como «Nuevo» en el catálogo. */
+  isNew?: boolean;
 }
 
 export const BLOCK_KINDS: BlockKind[] = [
@@ -89,7 +121,7 @@ export const BLOCK_KINDS: BlockKind[] = [
   },
 
   // ------------------------------------------------------------ Tu día
-  { type: 'saludo', name: 'Saludo', icon: '👋', description: 'Buenos días y la fecha de hoy.', group: 'inicio', w: 12, h: 3, frame: false },
+  { type: 'saludo', name: 'Saludo', icon: '👋', description: 'Buenos días y la fecha de hoy.', group: 'inicio', w: 12, h: 3, frame: false, catalog: false },
   {
     type: 'lo_mas_importante',
     name: 'Lo más importante de hoy',
@@ -111,7 +143,7 @@ export const BLOCK_KINDS: BlockKind[] = [
   },
 
   // ------------------------------------------------------------ Proyectos y tareas
-  { type: 'proximas_fechas', name: 'Próximas fechas límite', icon: '⏰', description: 'Las 5 tareas pendientes con la fecha más cercana.', group: 'proyectos', w: 6, h: 10 },
+  { type: 'proximas_fechas', name: 'Próximas fechas límite', icon: '⏰', description: 'Las 5 tareas pendientes con la fecha más cercana.', group: 'proyectos', w: 6, h: 10, filters: [PROJECT_FILTER] },
   { type: 'proyectos_activos', name: 'Proyectos activos', icon: '🚀', description: 'Progreso de cada proyecto activo.', group: 'proyectos', w: 6, h: 9 },
   {
     type: 'proyectos',
@@ -122,6 +154,7 @@ export const BLOCK_KINDS: BlockKind[] = [
     w: 4,
     h: 19,
     minW: 3,
+    catalog: false,
   },
   {
     type: 'tablero',
@@ -132,10 +165,11 @@ export const BLOCK_KINDS: BlockKind[] = [
     w: 8,
     h: 19,
     minW: 4,
+    filters: [PROJECT_FILTER],
   },
 
   // ------------------------------------------------------------ Hábitos y salud
-  { type: 'habitos_hoy', name: 'Hábitos de hoy', icon: '✅', description: 'Marca los hábitos de hoy y mira tus rachas.', group: 'habitos', w: 6, h: 12 },
+  { type: 'habitos_hoy', name: 'Hábitos de hoy', icon: '✅', description: 'Marca los hábitos de hoy y mira tus rachas.', group: 'habitos', w: 6, h: 12, filters: [{ key: 'habits', label: 'Hábitos', source: 'habits', allLabel: 'Todos los hábitos' }] },
   {
     type: 'habitos_semana',
     name: 'Hábitos · últimos 7 días',
@@ -145,6 +179,7 @@ export const BLOCK_KINDS: BlockKind[] = [
     w: 12,
     h: 16,
     minW: 6,
+    catalog: false,
   },
   {
     type: 'registro_salud',
@@ -155,11 +190,12 @@ export const BLOCK_KINDS: BlockKind[] = [
     w: 6,
     h: 20,
     minW: 4,
+    catalog: false,
   },
-  { type: 'salud_medias', name: 'Medias de salud', icon: '📊', description: 'Sueño, energía y ejercicio de los últimos 7 días.', group: 'habitos', w: 6, h: 4, frame: false },
+  { type: 'salud_medias', name: 'Medias de salud', icon: '📊', description: 'Sueño, energía y ejercicio de los últimos 7 días.', group: 'habitos', w: 6, h: 4, frame: false, catalog: false },
   { type: 'grafico_sueno', name: 'Sueño y energía · 14 días', icon: '😴', description: 'Gráfico de líneas de las dos últimas semanas.', group: 'habitos', w: 6, h: 11, minH: 7, fixedHeight: true },
   { type: 'grafico_ejercicio', name: 'Ejercicio · 14 días', icon: '🏃', description: 'Minutos de ejercicio de cada día.', group: 'habitos', w: 6, h: 9, minH: 7, fixedHeight: true },
-  { type: 'constancia_salud', name: 'Constancia del registro', icon: '📈', description: 'Cuántos de los últimos 7 días has registrado.', group: 'habitos', w: 6, h: 5 },
+  { type: 'constancia_salud', name: 'Constancia del registro', icon: '📈', description: 'Cuántos de los últimos 7 días has registrado.', group: 'habitos', w: 6, h: 5, catalog: false },
 
   // ------------------------------------------------------------ Objetivos
   {
@@ -182,10 +218,11 @@ export const BLOCK_KINDS: BlockKind[] = [
           { value: 'trimestral', label: 'Trimestrales', hint: 'Solo los objetivos trimestrales.' },
         ],
       },
+      AREA_OPTION,
     ],
   },
-  { type: 'objetivos_resumen', name: 'Progreso de objetivos', icon: '🏁', description: 'Lista compacta de 5 objetivos con su barra de progreso.', group: 'objetivos', w: 6, h: 9 },
-  { type: 'nuevo_objetivo', name: 'Nuevo objetivo', icon: '➕', description: 'Formulario para crear un objetivo.', group: 'objetivos', w: 4, h: 17, minW: 3 },
+  { type: 'objetivos_resumen', name: 'Progreso de objetivos', icon: '🏁', description: 'Lista compacta de 5 objetivos con su barra de progreso.', group: 'objetivos', w: 6, h: 9, options: [AREA_OPTION] },
+  { type: 'nuevo_objetivo', name: 'Nuevo objetivo', icon: '➕', description: 'Formulario para crear un objetivo.', group: 'objetivos', w: 4, h: 17, minW: 3, catalog: false },
   {
     type: 'revision_semanal',
     name: 'Revisión semanal',
@@ -209,10 +246,10 @@ export const BLOCK_KINDS: BlockKind[] = [
     frame: false,
   },
   { type: 'fin_resumen', name: 'Resumen del mes', icon: '💶', description: 'Ingresos, gastos y balance del mes.', group: 'finanzas', w: 12, h: 5, frame: false },
-  { type: 'fin_nuevo', name: 'Nuevo movimiento', icon: '➕', description: 'Apunta un gasto o un ingreso (también periódicos).', group: 'finanzas', w: 4, h: 18, minW: 3 },
-  { type: 'fin_presupuesto', name: 'Presupuesto por categoría', icon: '🎯', description: 'Gasto del mes frente al límite de cada categoría.', group: 'finanzas', w: 4, h: 21, minW: 3 },
-  { type: 'fin_meses', name: 'Últimos 6 meses', icon: '📊', description: 'Ingresos y gastos de los últimos seis meses.', group: 'finanzas', w: 8, h: 11, minH: 7, fixedHeight: true },
-  { type: 'fin_movimientos', name: 'Movimientos del mes', icon: '🧾', description: 'Lista de movimientos del mes, con opción de borrar.', group: 'finanzas', w: 8, h: 14, minW: 4 },
+  { type: 'fin_nuevo', name: 'Nuevo movimiento', icon: '➕', description: 'Apunta un gasto o un ingreso (también periódicos).', group: 'finanzas', w: 4, h: 18, minW: 3, filters: [CATEGORY_FILTER] },
+  { type: 'fin_presupuesto', name: 'Presupuesto por categoría', icon: '🎯', description: 'Gasto del mes frente al límite de cada categoría.', group: 'finanzas', w: 4, h: 21, minW: 3, filters: [CATEGORY_FILTER] },
+  { type: 'fin_meses', name: 'Últimos 6 meses', icon: '📊', description: 'Ingresos y gastos de los últimos seis meses.', group: 'finanzas', w: 8, h: 11, minH: 7, fixedHeight: true, filters: [CATEGORY_FILTER] },
+  { type: 'fin_movimientos', name: 'Movimientos del mes', icon: '🧾', description: 'Lista de movimientos del mes, con opción de borrar.', group: 'finanzas', w: 8, h: 14, minW: 4, filters: [CATEGORY_FILTER] },
   {
     type: 'fin_periodicos',
     name: 'Movimientos periódicos',
@@ -223,6 +260,7 @@ export const BLOCK_KINDS: BlockKind[] = [
     h: 15,
     minW: 6,
     frame: false,
+    catalog: false,
   },
   {
     type: 'fin_categorias',
@@ -234,6 +272,7 @@ export const BLOCK_KINDS: BlockKind[] = [
     h: 26,
     minW: 6,
     frame: false,
+    catalog: false,
   },
   {
     type: 'fin_importar',
@@ -245,6 +284,149 @@ export const BLOCK_KINDS: BlockKind[] = [
     h: 22,
     minW: 6,
     frame: false,
+    catalog: false,
+  },
+
+  // ------------------------------------------------------------ Nuevos: cruzan datos de toda la app
+  {
+    type: 'agenda_hoy',
+    name: 'Agenda de hoy',
+    icon: '📅',
+    description: 'En una lista: lo más importante, las tareas que vencen, los hábitos pendientes y los cargos de hoy.',
+    group: 'inicio',
+    w: 6,
+    h: 12,
+    isNew: true,
+  },
+  {
+    type: 'puntuacion_dia',
+    name: 'Puntuación del día',
+    icon: '🏅',
+    description: 'Una nota de 0 a 100 con tus hábitos, lo más importante, tus tareas y tu gasto, y su evolución en la semana.',
+    group: 'inicio',
+    w: 4,
+    h: 10,
+    isNew: true,
+  },
+  {
+    type: 'progreso_anio',
+    name: 'Progreso del año',
+    icon: '⏳',
+    description: 'Cuánto llevas de semana, mes y año, frente a cuánto llevas de tus objetivos.',
+    group: 'inicio',
+    w: 4,
+    h: 8,
+    isNew: true,
+  },
+  {
+    type: 'cuenta_atras',
+    name: 'Cuenta atrás',
+    icon: '⏱️',
+    description: 'Los días que faltan para lo que esperas: un viaje, un examen, un cumpleaños…',
+    group: 'inicio',
+    w: 4,
+    h: 7,
+    isNew: true,
+    empty: () => ({ events: [] }),
+  },
+  {
+    type: 'calendario_mes',
+    name: 'Calendario del mes',
+    icon: '🗓️',
+    description: 'Tus tareas con fecha, cargos periódicos y revisiones semanales en una vista mensual.',
+    group: 'inicio',
+    w: 8,
+    h: 16,
+    minW: 4,
+    isNew: true,
+  },
+  {
+    type: 'correlaciones',
+    name: 'Qué te funciona',
+    icon: '🔗',
+    description: 'Descubre cómo cambian tu sueño, tu energía y tu gasto los días que cumples cada hábito.',
+    group: 'habitos',
+    w: 6,
+    h: 10,
+    isNew: true,
+  },
+  {
+    type: 'cadena_habito',
+    name: 'Cadena de un hábito',
+    icon: '🔥',
+    description: 'Las últimas 26 semanas de un hábito en un mapa, con tu racha actual y tu mejor racha.',
+    group: 'habitos',
+    w: 6,
+    h: 8,
+    minW: 4,
+    isNew: true,
+    filters: [{ key: 'habit', label: 'Hábito', source: 'habit' }],
+  },
+  {
+    type: 'anio_pixeles',
+    name: 'Año en píxeles',
+    icon: '🟩',
+    description: 'Cada día del año es un cuadrado con el color de cuántos hábitos cumpliste.',
+    group: 'habitos',
+    w: 12,
+    h: 9,
+    minW: 6,
+    isNew: true,
+    filters: [{ key: 'habits', label: 'Hábitos', source: 'habits', allLabel: 'Todos los hábitos' }],
+  },
+  {
+    type: 'proximos_cargos',
+    name: 'Próximos cargos',
+    icon: '💳',
+    description: 'Lo que se te va a cobrar (y lo que vas a cobrar) en los próximos 30 días, según tus periódicos.',
+    group: 'finanzas',
+    w: 4,
+    h: 11,
+    isNew: true,
+  },
+  {
+    type: 'suscripciones',
+    name: 'Suscripciones',
+    icon: '📺',
+    description: 'Cuánto te cuestan al mes y al año tus gastos periódicos, del más caro al más barato.',
+    group: 'finanzas',
+    w: 4,
+    h: 11,
+    isNew: true,
+  },
+  {
+    type: 'ritmo_gasto',
+    name: 'Ritmo de gasto',
+    icon: '📉',
+    description: 'A este ritmo, ¿cómo acabarás el mes frente a tu presupuesto? Tiene en cuenta los cargos fijos que faltan.',
+    group: 'finanzas',
+    w: 4,
+    h: 8,
+    isNew: true,
+    filters: [CATEGORY_FILTER],
+  },
+  {
+    type: 'gasto_categorias',
+    name: 'Gasto por categoría',
+    icon: '🍩',
+    description: 'Gráfico circular del gasto del mes por categoría.',
+    group: 'finanzas',
+    w: 4,
+    h: 12,
+    minH: 8,
+    fixedHeight: true,
+    isNew: true,
+  },
+  {
+    type: 'hucha',
+    name: 'Hucha',
+    icon: '🐷',
+    description: 'Ahorra para una meta: progreso, lo que falta y cuánto apartar al mes para llegar a tiempo.',
+    group: 'finanzas',
+    w: 4,
+    h: 8,
+    isNew: true,
+    filters: [{ key: 'goal', label: 'Objetivo de ahorro', source: 'savings_goal' }],
   },
 ];
 
@@ -261,3 +443,8 @@ export function optionValue(kind: BlockKind | undefined, content: Record<string,
 export function hasFixedHeight(kind: BlockKind | undefined, content: Record<string, unknown>): boolean {
   return typeof content.fixedHeight === 'boolean' ? content.fixedHeight : !!kind?.fixedHeight;
 }
+
+/** Valor de un filtro guardado: id elegido ('' = todos) o, en los de varios, la lista de ids. */
+export const filterValue = (content: Record<string, unknown>, key: string): string => (typeof content[key] === 'string' ? (content[key] as string) : '');
+export const filterValues = (content: Record<string, unknown>, key: string): string[] =>
+  Array.isArray(content[key]) ? (content[key] as unknown[]).filter((v): v is string => typeof v === 'string') : [];

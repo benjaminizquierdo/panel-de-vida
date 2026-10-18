@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { blockKind, hasFixedHeight, optionValue } from '../lib/blockKinds';
+import { blockKind, filterValue, filterValues, hasFixedHeight, optionValue, type BlockFilter } from '../lib/blockKinds';
+import { categoryOptions } from '../lib/categories';
+import { useTable } from '../lib/useTable';
 import { COLS } from '../lib/layout';
 import { pageTree, subtree, type PageNode } from '../lib/pages';
 import type { Restorable } from '../lib/pageTemplates';
@@ -166,6 +168,9 @@ export function BlockSettings({ block, onClose, onSave, onDelete }: {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries((kind?.options ?? []).map((o) => [o.key, optionValue(kind, block.content, o.key)])),
   );
+  const [filters, setFilters] = useState<Record<string, string | string[]>>(() =>
+    Object.fromEntries((kind?.filters ?? []).map((f) => [f.key, f.source === 'habits' ? filterValues(block.content, f.key) : filterValue(block.content, f.key)])),
+  );
   const [w, setW] = useState(block.w);
   const [fixed, setFixed] = useState(() => hasFixedHeight(kind, block.content));
   const [h, setH] = useState(String(block.h));
@@ -178,7 +183,7 @@ export function BlockSettings({ block, onClose, onSave, onDelete }: {
     const height = Number(h);
     if (fixed && (!Number.isInteger(height) || height < 1 || height > 1000)) return toast('El alto tiene que ser un número de filas entre 1 y 1000', 'error');
     setBusy(true);
-    await onSave({ title: title.trim(), content: { ...block.content, ...values, fixedHeight: fixed }, w, h: fixed ? height : block.h });
+    await onSave({ title: title.trim(), content: { ...block.content, ...values, ...filters, fixedHeight: fixed }, w, h: fixed ? height : block.h });
     setBusy(false);
   };
 
@@ -218,6 +223,9 @@ export function BlockSettings({ block, onClose, onSave, onDelete }: {
             </div>
           );
         })}
+        {kind?.filters?.map((f) => (
+          <FilterField key={f.key} filter={f} value={filters[f.key]} onChange={(v) => setFilters((prev) => ({ ...prev, [f.key]: v }))} />
+        ))}
         <div className="field">
           <span>Ancho</span>
           <div className="segmented" role="group" aria-label="Ancho">
@@ -249,6 +257,62 @@ export function BlockSettings({ block, onClose, onSave, onDelete }: {
         <p className="muted small">En el ordenador también puedes arrastrar el borde o la esquina del bloque: al estirarlo hacia abajo, su alto pasa a ser fijo. En el móvil los bloques ocupan todo el ancho y miden lo que su contenido.</p>
       </form>
     </Sheet>
+  );
+}
+
+/** Filtro de un bloque con las opciones sacadas de los datos del usuario. */
+function FilterField({ filter, value, onChange }: { filter: BlockFilter; value: string | string[] | undefined; onChange: (v: string | string[]) => void }) {
+  const projects = useTable('projects');
+  const categories = useTable('finance_categories');
+  const habits = useTable('habits');
+  const goals = useTable('goals');
+
+  if (filter.source === 'habits') {
+    const chosen = Array.isArray(value) ? value : [];
+    const active = habits.rows.filter((h) => h.active);
+    return (
+      <fieldset className="field">
+        <legend>{filter.label}</legend>
+        <span className="muted small">{chosen.length === 0 ? `${filter.allLabel ?? 'Todos'}. Marca algunos para mostrar solo esos.` : `${chosen.length} elegidos.`}</span>
+        <div className="check-list">
+          {active.map((h) => (
+            <label key={h.id} className="check">
+              <input
+                type="checkbox"
+                checked={chosen.includes(h.id)}
+                onChange={(e) => onChange(e.target.checked ? [...chosen, h.id] : chosen.filter((id) => id !== h.id))}
+              />
+              <span>
+                {h.icon} {h.name}
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    );
+  }
+
+  const options =
+    filter.source === 'project'
+      ? projects.rows.map((p) => ({ id: p.id, label: p.name }))
+      : filter.source === 'expense_category'
+        ? categoryOptions(categories.rows, 'gasto')
+        : filter.source === 'habit'
+          ? habits.rows.filter((h) => h.active).map((h) => ({ id: h.id, label: `${h.icon} ${h.name}` }))
+          : goals.rows.filter((g) => g.unit.trim() === '€' || g.area === 'finanzas').map((g) => ({ id: g.id, label: g.title }));
+  const current = typeof value === 'string' ? value : '';
+  return (
+    <label className="field">
+      <span>{filter.label}</span>
+      <select value={current} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{filter.allLabel ?? (options.length ? 'El primero de la lista' : 'No hay ninguno todavía')}</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

@@ -2579,6 +2579,418 @@ select.sm {
   max-height: 140px;
 }
 
+/* ---------- Bloques que cruzan datos ---------- */
+
+.text-ok {
+  color: var(--ok);
+}
+
+.new-badge {
+  margin-left: 0.4rem;
+  vertical-align: 1px;
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.inline-form.wrap {
+  flex-wrap: wrap;
+}
+
+.inline-form.wrap input:not([type='date']) {
+  flex: 1 1 140px;
+}
+
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stats-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Qué te funciona */
+.insight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insight-list li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  line-height: 1.45;
+}
+
+.insight-icon {
+  flex: none;
+  font-size: 1.2rem;
+}
+
+/* Puntuación del día */
+.score {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.score-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.score-value {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.tone-ok {
+  color: var(--ok);
+}
+
+.tone-warn {
+  color: var(--warn);
+}
+
+.tone-danger {
+  color: var(--danger);
+}
+
+.score-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.score-parts .progress {
+  flex: none;
+  margin-top: 0.2rem;
+}
+
+.score-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  height: 70px;
+}
+
+.score-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.2rem;
+}
+
+.score-bar {
+  width: 100%;
+  max-width: 22px;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--surface-2);
+}
+
+.score-bar.tone-ok {
+  background: var(--ok);
+}
+
+.score-bar.tone-warn {
+  background: var(--warn);
+}
+
+.score-bar.tone-danger {
+  background: var(--danger);
+}
+
+/* Mapas de días (año en píxeles, cadena de un hábito) */
+.day-grid-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.day-grid {
+  display: grid;
+  gap: 3px;
+}
+
+.day-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.day-month {
+  height: 1.1em;
+  overflow: visible;
+  white-space: nowrap;
+  font-size: 0.7rem;
+}
+
+.day-cell {
+  display: inline-block;
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 18px;
+  min-width: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+
+.day-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+
+.day-legend .day-cell {
+  width: 11px;
+}
+
+.day-cell.lvl-1 {
+  background: color-mix(in srgb, var(--ok) 30%, var(--surface-2));
+}
+
+.day-cell.lvl-2 {
+  background: color-mix(in srgb, var(--ok) 55%, var(--surface-2));
+}
+
+.day-cell.lvl-3 {
+  background: color-mix(in srgb, var(--ok) 78%, var(--surface-2));
+}
+
+.day-cell.lvl-4 {
+  background: var(--ok);
+}
+
+.day-cell.lvl-x {
+  background: transparent;
+  outline: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.day-cell.is-today {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.chain-title {
+  margin: 0;
+}
+
+.chain-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.chain-stats > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.chain-stats strong {
+  font-size: 1.25rem;
+}
+
+/* Agenda de hoy */
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.agenda h3 {
+  margin: 0 0 0.3rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Progreso del año */
+.period .progress {
+  flex: none;
+  margin-top: 0.25rem;
+}
+
+/* Cuenta atrás */
+.countdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.countdown-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.countdown-list li.is-past {
+  opacity: 0.55;
+}
+
+.countdown-days {
+  flex: none;
+  min-width: 3.2rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: 1.3rem;
+  text-align: center;
+}
+
+.countdown-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Calendario del mes */
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.calendar-head {
+  text-align: center;
+}
+
+.calendar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 42px;
+  padding: 4px 2px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+
+.calendar-cell.is-empty {
+  background: transparent;
+}
+
+.calendar-cell.is-today {
+  border-color: var(--accent);
+}
+
+.calendar-cell.is-selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.calendar-num {
+  font-size: 0.85rem;
+}
+
+.calendar-marks {
+  display: flex;
+  gap: 3px;
+}
+
+.mark {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.mark.mark-task {
+  background: var(--accent);
+}
+
+.mark.mark-task.overdue {
+  background: var(--danger);
+}
+
+.mark.mark-charge {
+  background: var(--warn);
+}
+
+.mark.mark-review {
+  background: var(--ok);
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.calendar-day strong::first-letter {
+  text-transform: uppercase;
+}
+
+.calendar-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+/* Gasto por categoría */
+.donut {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.donut-chart {
+  position: relative;
+  min-height: 170px;
+}
+
+.donut-total {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+
+.donut-total .small::first-letter {
+  text-transform: uppercase;
+}
+
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pace-forecast {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 960px) {

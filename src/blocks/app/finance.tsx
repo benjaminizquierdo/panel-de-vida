@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { confirmDelete, Empty, IconButton, Progress, Stat } from '../../components/ui';
-import { categoryOptions, categoryPath, categoryTree, topLevelId } from '../../lib/categories';
+import { filterValue } from '../../lib/blockKinds';
+import { categoryOptions, categoryPath, categoryTree, inCategory, topLevelId } from '../../lib/categories';
 import { useNav, usePageMonth } from '../../lib/pageContext';
 import { FREQUENCY_LABEL } from '../../lib/recurring';
 import { toast } from '../../lib/toast';
@@ -12,6 +13,16 @@ import { addMonths, eur, fmtDate, fmtMonth, fmtMonthShort, monthKey, parseNum, p
 import FinanceCategories from '../../pages/FinanceCategories';
 import FinanceImport from '../../pages/FinanceImport';
 import FinanceRecurring, { newScheduleDraft, runRecurring, ScheduleFields, scheduleError, scheduleOf, type ScheduleDraft } from '../../pages/FinanceRecurring';
+import type { BlockProps } from '..';
+
+/** Filtro de categoría del bloque: el id elegido, si la categoría sigue existiendo, y su comprobación. */
+function useCategoryFilter(content: Record<string, unknown>) {
+  const categories = useTable('finance_categories');
+  const byId = useMemo(() => new Map(categories.rows.map((cat) => [cat.id, cat])), [categories.rows]);
+  const wanted = filterValue(content, 'category');
+  const filter = wanted && byId.has(wanted) ? wanted : '';
+  return { categories, byId, filter, matches: inCategory(byId, filter), label: filter ? categoryPath(byId, filter) : '' };
+}
 
 const byNewest = (a: Transaction, b: Transaction) => b.date.localeCompare(a.date) || (b.created_at ?? '').localeCompare(a.created_at ?? '');
 
@@ -76,14 +87,16 @@ export function MonthSummary() {
   );
 }
 
-export function NewTransactionBlock() {
+export function NewTransactionBlock({ block }: BlockProps) {
   const txs = useTable('transactions');
-  const categories = useTable('finance_categories');
+  const { categories, filter } = useCategoryFilter(block.content);
   const recurring = useTable('recurring_transactions');
   const nav = useNav();
   const manage = nav.pageOf('finanzas_categorias');
   return (
     <NewTransaction
+      key={filter}
+      initialCategory={filter}
       categories={categories.rows}
       onAdd={txs.add}
       onAddRecurring={async (rule) => {
@@ -97,7 +110,9 @@ export function NewTransactionBlock() {
   );
 }
 
-function NewTransaction({ categories, onAdd, onAddRecurring, onManage }: {
+function NewTransaction({ initialCategory, categories, onAdd, onAddRecurring, onManage }: {
+  /** Categoría preseleccionada (filtro del bloque). */
+  initialCategory: string;
   categories: FinanceCategory[];
   onAdd: (t: NewRow<'transactions'>) => Promise<unknown>;
   onAddRecurring: (rule: NewRow<'recurring_transactions'>) => Promise<boolean>;
@@ -105,7 +120,7 @@ function NewTransaction({ categories, onAdd, onAddRecurring, onManage }: {
 }) {
   const [type, setType] = useState<TxType>('gasto');
   const [amount, setAmount] = useState('');
-  const [categoryId, setCategoryId] = useState('');
+  const [categoryId, setCategoryId] = useState(initialCategory);
   const [date, setDate] = useState(today());
   const [note, setNote] = useState('');
   const [periodic, setPeriodic] = useState(false);
@@ -225,11 +240,11 @@ function NewTransaction({ categories, onAdd, onAddRecurring, onManage }: {
   );
 }
 
-export function BudgetBlock() {
+export function BudgetBlock({ block }: BlockProps) {
   const { expenses } = useMonth();
   const budgets = useTable('budgets');
-  const categories = useTable('finance_categories');
-  const byId = useMemo(() => new Map(categories.rows.map((cat) => [cat.id, cat])), [categories.rows]);
+  const { categories, byId, filter } = useCategoryFilter(block.content);
+  const onlyTop = filter ? topLevelId(byId, filter) : '';
 
   // Gasto por categoría exacta y acumulado por categoría principal (incluye sus subcategorías).
   const spentByCategory = new Map<string, number>();
@@ -246,7 +261,9 @@ export function BudgetBlock() {
     ...categoryTree(categories.rows, 'gasto'),
     // Archivadas que aún tienen gasto este mes: se siguen mostrando para que el total cuadre.
     ...categoryTree(categories.rows, 'gasto', true).filter((cat) => cat.archived && spentByTop.has(cat.id)),
-  ].map((cat) => ({ cat, budget: budgetFor(cat.id), spent: spentByTop.get(cat.id) ?? 0 }));
+  ]
+    .filter((cat) => !onlyTop || cat.id === onlyTop)
+    .map((cat) => ({ cat, budget: budgetFor(cat.id), spent: spentByTop.get(cat.id) ?? 0 }));
 
   if (rows.length === 0) return <Empty>{categories.loading ? 'Cargando…' : 'Sin categorías de gasto todavía.'}</Empty>;
   return (
@@ -319,12 +336,13 @@ function BudgetRow({ category, limit, spent, breakdown, onSave }: {
   );
 }
 
-export function SixMonthsChart() {
+export function SixMonthsChart({ block }: BlockProps) {
   const txs = useTable('transactions');
+  const { filter, matches, label } = useCategoryFilter(block.content);
   const c = useChartColors();
   const current = monthKey(today());
   const chart = Array.from({ length: 6 }, (_, i) => addMonths(current, i - 5)).map((key) => {
-    const rows = txs.rows.filter((t) => monthKey(t.date) === key);
+    const rows = txs.rows.filter((t) => monthKey(t.date) === key && matches(t.category_id));
     return {
       mes: fmtMonthShort(key),
       Ingresos: sumBy(rows.filter((t) => t.type === 'ingreso'), (t) => t.amount),
@@ -333,6 +351,7 @@ export function SixMonthsChart() {
   });
   return (
     <div className="chart chart-fill">
+      {filter && <p className="muted small">Gastos de {label}</p>}
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={chart} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
           <CartesianGrid stroke={c.grid} vertical={false} />
@@ -340,7 +359,7 @@ export function SixMonthsChart() {
           <YAxis tick={{ fill: c.text, fontSize: 11 }} tickFormatter={(v: number) => `${Math.round(v)} €`} width={64} />
           <Tooltip {...tooltipStyle(c)} formatter={(v) => eur(Number(v))} cursor={{ fill: c.grid, opacity: 0.4 }} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="Ingresos" fill={c.c2} radius={[4, 4, 0, 0]} />
+          {!filter && <Bar dataKey="Ingresos" fill={c.c2} radius={[4, 4, 0, 0]} />}
           <Bar dataKey="Gastos" fill={c.c1} radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
@@ -348,13 +367,15 @@ export function SixMonthsChart() {
   );
 }
 
-export function MonthTransactions() {
-  const { month, txs, monthTx } = useMonth();
-  const categories = useTable('finance_categories');
-  const byId = useMemo(() => new Map(categories.rows.map((cat) => [cat.id, cat])), [categories.rows]);
+export function MonthTransactions({ block }: BlockProps) {
+  const { month, txs, monthTx: all } = useMonth();
+  const { byId, matches, label } = useCategoryFilter(block.content);
+  const monthTx = all.filter((t) => matches(t.category_id));
 
   if (monthTx.length === 0) return <Empty>{txs.loading ? 'Cargando…' : `No hay movimientos en ${fmtMonth(month).toLowerCase()}.`}</Empty>;
   return (
+    <>
+    {label && <p className="muted small">Solo {label} · {eur(sumBy(monthTx.filter((t) => t.type === 'gasto'), (t) => t.amount))} gastados</p>}
     <ul className="tx-list" aria-label={`Movimientos de ${fmtMonth(month)}`}>
       {monthTx.map((t) => {
         const cat = byId.get(t.category_id);
@@ -391,6 +412,7 @@ export function MonthTransactions() {
         );
       })}
     </ul>
+    </>
   );
 }
 

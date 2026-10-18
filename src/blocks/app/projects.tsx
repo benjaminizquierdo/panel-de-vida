@@ -2,8 +2,10 @@ import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { confirmDelete, Empty, IconButton, Progress } from '../../components/ui';
 import { PROJECT_COLORS } from '../../lib/defaults';
 import type { NewRow, Priority, Project, ProjectStatus, Task, TaskStatus } from '../../lib/types';
+import { filterValue } from '../../lib/blockKinds';
 import { useTable } from '../../lib/useTable';
 import { fmtDate, pct, today } from '../../lib/utils';
+import type { BlockProps } from '..';
 
 const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'pendiente', label: 'Pendiente' },
@@ -15,13 +17,14 @@ const PRIORITY_RANK: Record<Priority, number> = { alta: 0, media: 1, baja: 2 };
 const PRIORITY_LABEL: Record<Priority, string> = { alta: 'Alta', media: 'Media', baja: 'Baja' };
 const STATUS_LABEL: Record<ProjectStatus, string> = { activo: 'Activo', pausado: 'Pausado', completado: 'Completado' };
 
-export function UpcomingDeadlines() {
+export function UpcomingDeadlines({ block }: BlockProps) {
   const day = today();
   const tasks = useTable('tasks');
   const projects = useTable('projects');
-  const projectName = (id: string | null) => projects.rows.find((p) => p.id === id)?.name;
+  const only = filterValue(block.content, 'project');
+  const projectName = (id: string | null) => (only ? undefined : projects.rows.find((p) => p.id === id)?.name);
   const upcoming = tasks.rows
-    .filter((t) => t.status !== 'hecha' && t.due_date)
+    .filter((t) => t.status !== 'hecha' && t.due_date && (!only || t.project_id === only))
     .sort((a, b) => a.due_date!.localeCompare(b.due_date!))
     .slice(0, 5);
 
@@ -162,14 +165,17 @@ function NewProject({ onAdd }: { onAdd: (p: NewRow<'projects'>) => Promise<unkno
 /** 'todos' | 'sueltas' (tareas sin proyecto) | id de un proyecto */
 type Filter = string;
 
-export function TaskBoard() {
+export function TaskBoard({ block }: BlockProps) {
   const projects = useTable('projects');
   const tasks = useTable('tasks');
   const [filter, setFilter] = useState<Filter>('todos');
+  // Con un proyecto fijado en los ajustes del bloque, el tablero es solo de ese proyecto.
+  const fixed = filterValue(block.content, 'project');
 
   const byId = useMemo(() => new Map(projects.rows.map((p) => [p.id, p])), [projects.rows]);
   // Si el proyecto elegido se borra, se vuelve a «Todas».
-  const current = filter === 'todos' || filter === 'sueltas' || byId.has(filter) ? filter : 'todos';
+  const wanted = fixed || filter;
+  const current = wanted === 'todos' || wanted === 'sueltas' || byId.has(wanted) ? wanted : 'todos';
 
   const visible = tasks.rows
     .filter((t) => current === 'todos' || (current === 'sueltas' ? !t.project_id : t.project_id === current))
@@ -182,7 +188,12 @@ export function TaskBoard() {
 
   return (
     <div className="stack">
-      <label className="field board-filter">
+      {fixed && byId.get(fixed) && (
+        <p className="muted small">
+          <span className="dot" style={{ background: byId.get(fixed)!.color }} /> Solo el proyecto «{byId.get(fixed)!.name}»
+        </p>
+      )}
+      {!fixed && <label className="field board-filter">
         <span>Ver</span>
         <select value={current} onChange={(e) => setFilter(e.target.value)}>
           <option value="todos">Todas las tareas ({tasks.rows.length})</option>
@@ -193,7 +204,7 @@ export function TaskBoard() {
             </option>
           ))}
         </select>
-      </label>
+      </label>}
       <NewTask projects={projects.rows} defaultProject={current !== 'todos' && current !== 'sueltas' ? current : ''} onAdd={tasks.add} />
       <div className="board">
         {COLUMNS.map((col, i) => {

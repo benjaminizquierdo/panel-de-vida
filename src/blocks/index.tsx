@@ -18,6 +18,9 @@ const projects = () => import('./app/projects');
 const habits = () => import('./app/habits');
 const goals = () => import('./app/goals');
 const finance = () => import('./app/finance');
+const insights = () => import('./app/insights');
+const time = () => import('./app/time');
+const money = () => import('./app/money');
 
 const from = <M,>(load: () => Promise<M>, pick: (m: M) => ComponentType<BlockProps>) => lazy(() => load().then((m) => ({ default: pick(m) })));
 
@@ -58,4 +61,18 @@ export const BLOCK_COMPONENTS: Record<string, AnyBlock> = {
   fin_periodicos: from(finance, (m) => m.RecurringBlock),
   fin_categorias: from(finance, (m) => m.CategoriesBlock),
   fin_importar: from(finance, (m) => m.ImportBlock),
+
+  agenda_hoy: from(time, (m) => m.TodayAgenda),
+  progreso_anio: from(time, (m) => m.YearProgress),
+  cuenta_atras: from(time, (m) => m.Countdown),
+  calendario_mes: from(time, (m) => m.MonthCalendar),
+  puntuacion_dia: from(insights, (m) => m.DayScore),
+  correlaciones: from(insights, (m) => m.Correlations),
+  cadena_habito: from(insights, (m) => m.HabitChain),
+  anio_pixeles: from(insights, (m) => m.YearPixels),
+  proximos_cargos: from(money, (m) => m.UpcomingCharges),
+  suscripciones: from(money, (m) => m.Subscriptions),
+  ritmo_gasto: from(money, (m) => m.SpendingPace),
+  gasto_categorias: from(money, (m) => m.CategoryDonut),
+  hucha: from(money, (m) => m.SavingsJar),
 };
