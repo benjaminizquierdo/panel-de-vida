@@ -32,7 +32,7 @@ export async function buildContext(db: SupabaseClient, today: string, userName: 
   const [habits, doneToday, projects, tasks, goals, highlight, categories] = await Promise.all([
     db.from('habits').select('id, name').eq('active', true).order('created_at'),
     db.from('habit_logs').select('habit_id').eq('date', today),
-    db.from('projects').select('id, name, status').neq('status', 'completado').order('created_at'),
+    db.from('projects').select('id, name, status, kind').neq('status', 'completado').order('created_at'),
     db
       .from('tasks')
       .select('id, title, status, priority, due_date, project_id')
@@ -57,7 +57,7 @@ export async function buildContext(db: SupabaseClient, today: string, userName: 
   const done = new Set((doneToday.data ?? []).map((l) => l.habit_id));
   const data = {
     habitos: (habits.data ?? []).map((h) => ({ id: h.id, nombre: h.name, hecho_hoy: done.has(h.id) })),
-    proyectos: (projects.data ?? []).map((p) => ({ id: p.id, nombre: p.name, estado: p.status })),
+    proyectos: (projects.data ?? []).map((p) => ({ id: p.id, nombre: p.name, estado: p.status, tipo: p.kind })),
     tareas_abiertas: (tasks.data ?? []).map((t) => ({
       id: t.id,
       titulo: t.title,

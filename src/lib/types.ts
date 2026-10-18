@@ -11,11 +11,20 @@ interface Base {
   created_at?: string;
 }
 
+/** Valor de un campo propio de un tipo de proyecto (ver lib/projectKinds.ts). */
+export type ProjectFieldValue = string | number;
+
 export interface Project extends Base {
   name: string;
   description: string;
   status: ProjectStatus;
   color: string;
+  /** Tipo de proyecto (lib/projectKinds.ts). Uno desconocido se trata como «General». */
+  kind: string;
+  /** Campos propios del tipo: cliente, fecha de examen, presupuesto… */
+  fields: Record<string, ProjectFieldValue>;
+  /** Último cambio en el proyecto o en algo suyo (lo mantienen los triggers de 008_tipos_proyecto.sql). */
+  last_activity_at?: string;
 }
 
 export interface Task extends Base {
@@ -24,6 +33,60 @@ export interface Task extends Base {
   status: TaskStatus;
   priority: Priority;
   due_date: string | null;
+  /** Cuándo se marcó como hecha (lo pone la base de datos). */
+  completed_at?: string | null;
+  /** Tipo de tarea (lib/tasks.ts): tarea, error, mejora… */
+  kind?: string;
+  description?: string;
+  /** Horas estimadas y horas ya dedicadas. */
+  estimate_hours?: number | null;
+  spent_hours?: number | null;
+}
+
+/** Nota, enlace o documento de la ficha de una tarea (009_detalle_tareas.sql). */
+export interface TaskItem extends Base {
+  task_id: string;
+  /** 'nota', 'enlace' o 'archivo'. */
+  kind: string;
+  title: string;
+  body: string;
+  url: string | null;
+  file_path: string | null;
+  file_size: number | null;
+  file_type: string;
+  sort_order: number;
+}
+
+export type ItemStatus = 'pendiente' | 'en_curso' | 'hecho';
+
+/**
+ * Elemento de un proyecto: 'modulo' y 'tema' (temario), 'recurso', 'idea', 'referencia', 'nota',
+ * 'enlace' o 'archivo'. Cada bloque usa los campos que necesita.
+ */
+export interface ProjectItem extends Base {
+  project_id: string;
+  /** Módulo del que cuelga un tema. */
+  parent_id: string | null;
+  kind: string;
+  title: string;
+  body: string;
+  url: string | null;
+  image_url: string | null;
+  status: ItemStatus;
+  /** Ruta en Storage (bucket «adjuntos»): <user_id>/<project_id>/<archivo>. */
+  file_path: string | null;
+  file_size: number | null;
+  file_type: string;
+  sort_order: number;
+}
+
+/** Registro de un proyecto: 'horas' dedicadas, 'valor' medido (kg, km…) o 'check' (día cumplido de un reto). */
+export interface ProjectLog extends Base {
+  project_id: string;
+  kind: string;
+  date: string;
+  value: number;
+  note: string;
 }
 
 export interface Habit extends Base {
@@ -85,6 +148,8 @@ export interface Transaction extends Base {
   source?: string;
   /** Identificador en el origen; evita importar dos veces el mismo movimiento. */
   external_id?: string | null;
+  /** Proyecto al que pertenece el gasto (p. ej. un viaje). */
+  project_id?: string | null;
 }
 
 export type Frequency = 'semanal' | 'mensual' | 'anual';
@@ -135,6 +200,8 @@ export interface UserTab extends Base {
   sort_order: number;
   /** Categoría por defecto de la que sale (ver lib/pageTemplates.ts); null en las creadas por el usuario. */
   template: string | null;
+  /** Página de un proyecto (no sale en el menú). */
+  project_id?: string | null;
 }
 
 /** Tipo de bloque: ver lib/blockKinds.ts. Los desconocidos (de una versión más nueva) se muestran como aviso. */
@@ -162,6 +229,9 @@ export interface Tables {
   recurring_transactions: RecurringTransaction;
   projects: Project;
   tasks: Task;
+  task_items: TaskItem;
+  project_items: ProjectItem;
+  project_logs: ProjectLog;
   habits: Habit;
   habit_logs: HabitLog;
   health_logs: HealthLog;

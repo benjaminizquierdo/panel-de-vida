@@ -19,6 +19,17 @@ await db.exec(`
   grant usage on schema public to anon, authenticated;
   grant usage on schema auth to anon, authenticated;
   alter default privileges in schema public grant all on tables to anon, authenticated;
+
+  create schema storage;
+  create table storage.buckets (id text primary key, name text not null, public boolean not null default false, file_size_limit bigint);
+  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id), name text not null);
+  alter table storage.objects enable row level security;
+  -- Como en Supabase: las carpetas de la ruta, sin el nombre del archivo.
+  create function storage.foldername(name text) returns text[] language sql immutable as
+    $$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
+  grant usage on schema storage to anon, authenticated;
+  grant all on storage.objects to authenticated;
+  grant select on storage.buckets to authenticated;
 `);
 
 let failures = 0;
@@ -360,6 +371,171 @@ ok(!!(await fails(`update public.user_settings set user_id = $1`, [B])), 'ni hac
 await db.exec(`reset role; set role anon;`);
 ok(!!(await fails(`select public.seed_default_pages('[]')`)), 'sin sesión no se pueden crear páginas');
 await as(A);
+
+// ---------------------------------------------------------------- 008: tipos de proyecto
+
+// A tiene un proyecto de antes, con una tarea hecha y otra pendiente, y su página Proyectos con
+// el tablero general, otro tablero fijado a ese proyecto y la lista de proyectos.
+const pOld = await one(`insert into public.projects (name) values ('Web antigua') returning id`);
+await db.query(`insert into public.tasks (title, project_id, status) values ('Hecha', $1, 'hecha'), ('Pendiente', $1, 'pendiente')`, [pOld.id]);
+await db.query(`select public.insert_page_tree($1)`, [
+  JSON.stringify([
+    {
+      name: 'Proyectos',
+      template: 'proyectos',
+      blocks: [
+        { type: 'proyectos', x: 0, y: 0, w: 4, h: 10 },
+        { type: 'tablero', x: 4, y: 0, w: 8, h: 10 },
+        { type: 'tablero', content: { project: pOld.id }, x: 0, y: 20, w: 12, h: 10 },
+      ],
+    },
+  ]),
+]);
+
+await asAdmin();
+await db.exec(migration('008_tipos_proyecto.sql'));
+ok(true, '008_tipos_proyecto.sql se ejecuta sin errores sobre una base con datos');
+
+await as(A);
+const old = await one(`select kind, fields, last_activity_at >= created_at as act from public.projects where id = $1`, [pOld.id]);
+ok(old.kind === 'general' && JSON.stringify(old.fields) === '{}' && old.act, 'los proyectos que ya existían pasan a ser de tipo «General»');
+const oldTasks = (await db.query(`select title, completed_at is not null as done from public.tasks where project_id = $1 order by title`, [pOld.id])).rows;
+ok(oldTasks[0].done && !oldTasks[1].done, 'las tareas ya hechas reciben fecha de completado; las pendientes, no');
+const projBlocks = (await db.query(`select b.type, b.x, b.y, b.w, b.content->>'project' p from public.blocks b join public.tabs t on t.id = b.tab_id where t.template = 'proyectos' order by b.y, b.type`)).rows;
+ok(
+  projBlocks.map((b) => b.type).join(',') === 'foco_hoy,proyectos,tablero' && projBlocks[0].y === 0 && projBlocks[0].w === 12 && projBlocks[1].w === 12 && projBlocks[2].p === pOld.id,
+  `la página Proyectos cambia el tablero general por «Foco de hoy» y conserva el fijado a un proyecto: ${JSON.stringify(projBlocks)}`,
+);
+const bucket = await one(`select public, file_size_limit from storage.buckets where id = 'adjuntos'`);
+ok(bucket && bucket.public === false && Number(bucket.file_size_limit) === 10485760, 'crea el bucket privado «adjuntos» (10 MB por archivo)');
+
+// Tipos y campos
+const study = await one(`insert into public.projects (name, kind, fields) values ('AWS', 'estudios', '{"curso": "AWS SAA", "examen": "2027-03-01"}') returning id, kind`);
+ok(study.kind === 'estudios', 'un proyecto guarda su tipo y sus campos propios');
+ok(!!(await fails(`insert into public.projects (name, kind) values ('X', 'Tipo raro!')`)), 'el tipo tiene que tener forma de identificador');
+ok(!!(await fails(`insert into public.projects (name, fields) values ('X', '[1, 2]')`)), 'los campos tienen que ser un objeto');
+ok(!(await fails(`insert into public.projects (name, kind) values ('Futuro', 'tipo_nuevo')`)) , 'un tipo nuevo de la app no necesita otra migración');
+await db.query(`delete from public.projects where name = 'Futuro'`);
+
+// Fecha de completado
+const t1 = await one(`insert into public.tasks (title, project_id) values ('Tema 1', $1) returning id, completed_at`, [study.id]);
+ok(t1.completed_at === null, 'una tarea nueva pendiente no tiene fecha de completado');
+await db.query(`update public.tasks set status = 'hecha' where id = $1`, [t1.id]);
+const doneAt = (await one(`select completed_at from public.tasks where id = $1`, [t1.id])).completed_at;
+ok(doneAt !== null, 'al marcarla como hecha se guarda cuándo');
+await db.query(`update public.tasks set title = 'Tema 1 (repaso)', status = 'hecha' where id = $1`, [t1.id]);
+ok((await one(`select completed_at from public.tasks where id = $1`, [t1.id])).completed_at.getTime() === doneAt.getTime(), 'editarla después no cambia esa fecha');
+await db.query(`update public.tasks set status = 'en_curso' where id = $1`, [t1.id]);
+ok((await one(`select completed_at from public.tasks where id = $1`, [t1.id])).completed_at === null, 'si se reabre, se borra');
+
+// Actividad
+await db.query(`update public.projects set last_activity_at = now() - interval '30 days' where id = $1`, [study.id]);
+ok((await one(`select now() - last_activity_at > interval '29 days' as stale from public.projects where id = $1`, [study.id])).stale, 'la última actividad se puede fijar a mano');
+await db.query(`insert into public.project_logs (project_id, kind, value) values ($1, 'horas', 1.5)`, [study.id]);
+ok((await one(`select now() - last_activity_at < interval '1 minute' as fresh from public.projects where id = $1`, [study.id])).fresh, 'registrar horas cuenta como actividad del proyecto');
+await db.query(`update public.projects set last_activity_at = now() - interval '30 days' where id = $1`, [study.id]);
+await db.query(`update public.projects set fields = '{"curso": "AWS SAA C03"}' where id = $1`, [study.id]);
+ok((await one(`select now() - last_activity_at < interval '1 minute' as fresh from public.projects where id = $1`, [study.id])).fresh, 'editar el proyecto también');
+
+// Registros
+ok(!!(await fails(`insert into public.project_logs (project_id, kind, value) values ($1, 'horas', 30)`, [study.id])), 'no se pueden registrar más de 24 h de una vez');
+ok(!!(await fails(`insert into public.project_logs (project_id, kind, value) values ($1, 'horas', 0)`, [study.id])), 'ni 0 horas');
+const reto = await one(`insert into public.projects (name, kind) values ('Correr', 'reto') returning id`);
+await db.query(`insert into public.project_logs (project_id, kind) values ($1, 'check')`, [reto.id]);
+ok(!!(await fails(`insert into public.project_logs (project_id, kind) values ($1, 'check')`, [reto.id])), 'un reto se marca como mucho una vez al día');
+ok(!(await fails(`insert into public.project_logs (project_id, kind, value) values ($1, 'valor', -2.5)`, [reto.id])), 'los valores medidos admiten decimales y negativos');
+
+// Elementos
+const mod = await one(`insert into public.project_items (project_id, kind, title) values ($1, 'modulo', 'Módulo 1') returning id`, [study.id]);
+ok(!(await fails(`insert into public.project_items (project_id, parent_id, kind, title, status) values ($1, $2, 'tema', 'IAM', 'hecho')`, [study.id, mod.id])), 'un tema cuelga de su módulo');
+ok(!!(await fails(`insert into public.project_items (project_id, kind, url) values ($1, 'enlace', 'javascript:alert(1)')`, [study.id])), 'los enlaces tienen que ser http(s)');
+ok(!!(await fails(`insert into public.project_items (project_id, kind, status) values ($1, 'recurso', 'terminado')`, [study.id])), 'el estado de un recurso es pendiente, en curso o hecho');
+ok(!!(await fails(`insert into public.project_items (project_id, kind, file_path) values ($1, 'archivo', $2)`, [study.id, `${B}/x.pdf`])), 'un archivo tiene que estar en la carpeta de su usuario');
+ok(!(await fails(`insert into public.project_items (project_id, kind, title, file_path, file_size) values ($1, 'archivo', 'temario.pdf', $2, 1000)`, [study.id, `${A}/${study.id}/temario.pdf`])), 'y ahí sí se guarda');
+await db.query(`delete from public.project_items where id = $1`, [mod.id]);
+ok((await one(`select count(*)::int n from public.project_items where kind = 'tema'`)).n === 0, 'borrar un módulo borra sus temas');
+
+// Página del proyecto
+const PROJECT_PAGE = (pid, extra = {}) => JSON.stringify([{ name: 'AWS', icon: '🎓', project_id: pid, blocks: [{ type: 'temario', content: { project: pid }, x: 0, y: 0, w: 8, h: 10 }], ...extra }]);
+ok((await one(`select public.insert_page_tree($1) n`, [PROJECT_PAGE(study.id)])).n === 1, 'cada proyecto puede tener su página con sus bloques');
+ok(!!(await fails(`select public.insert_page_tree($1)`, [PROJECT_PAGE(study.id)])), 'pero solo una');
+const habA = await one(`select id from public.tabs where template = 'habitos'`);
+ok(!!(await fails(`select public.insert_page_tree($1, $2)`, [PROJECT_PAGE(reto.id), habA.id])), 'la página de un proyecto no va dentro de otra');
+
+// Gastos
+const trip = await one(`insert into public.projects (name, kind, fields) values ('Japón', 'viaje', '{"presupuesto": 2500}') returning id`);
+const gastoA = (await one(`select id from public.finance_categories where type = 'gasto' and not archived limit 1`)).id;
+const txTrip = await one(`insert into public.transactions (type, amount, category_id, note, project_id) values ('gasto', 900, $1, 'Vuelos', $2) returning id`, [gastoA, trip.id]);
+ok(!!txTrip.id, 'un gasto de Finanzas puede ir a un proyecto');
+await db.query(`delete from public.projects where id = $1`, [trip.id]);
+const kept = await one(`select project_id, amount from public.transactions where id = $1`, [txTrip.id]);
+ok(kept && kept.project_id === null && Number(kept.amount) === 900, 'si se borra el proyecto, el gasto se queda en Finanzas sin proyecto');
+await db.query(`delete from public.transactions where id = $1`, [txTrip.id]);
+
+// Archivos
+await db.query(`insert into storage.objects (bucket_id, name) values ('adjuntos', $1)`, [`${A}/${study.id}/temario.pdf`]);
+ok(!!(await fails(`insert into storage.objects (bucket_id, name) values ('adjuntos', $1)`, [`${B}/robado.pdf`])), 'no se puede subir un archivo a la carpeta de otro usuario');
+
+// Aislamiento
+await as(B);
+ok((await one(`select count(*)::int n from public.project_items`)).n === 0 && (await one(`select count(*)::int n from public.project_logs`)).n === 0, 'B no ve los elementos ni los registros de A');
+ok((await one(`select count(*)::int n from storage.objects`)).n === 0, 'ni sus archivos');
+ok(!!(await fails(`insert into public.project_items (project_id, kind, title) values ($1, 'idea', 'intrusa')`, [study.id])), 'B no puede añadir nada a un proyecto de A');
+ok(!!(await fails(`insert into public.project_logs (project_id, kind) values ($1, 'check')`, [reto.id])), 'ni marcar su reto');
+ok(!!(await fails(`select public.insert_page_tree($1)`, [PROJECT_PAGE(reto.id)])), 'ni crear la página de un proyecto de A');
+const otrosB = (await one(`select id from public.finance_categories where type = 'gasto' limit 1`)).id;
+ok(!!(await fails(`insert into public.transactions (type, amount, category_id, project_id) values ('gasto', 1, $1, $2)`, [otrosB, reto.id])), 'ni apuntar un gasto en él');
+await db.exec(`reset role; set role anon;`);
+ok(!!(await fails(`select * from public.project_items`)), 'sin sesión no se ven elementos de proyectos');
+
+// Borrar un proyecto borra todo lo suyo (salvo los gastos, ya comprobado).
+await as(A);
+await db.query(`delete from public.projects where id in ($1, $2, $3)`, [study.id, reto.id, pOld.id]);
+const leftovers = await one(`select
+  (select count(*) from public.project_items)::int items,
+  (select count(*) from public.project_logs)::int logs,
+  (select count(*) from public.tabs where project_id is not null)::int pages,
+  (select count(*) from public.blocks where type = 'temario')::int blocks,
+  (select count(*) from public.tasks)::int tasks`);
+ok(Object.values(leftovers).every((n) => n === 0), `borrar un proyecto borra sus tareas, elementos, registros y su página: ${JSON.stringify(leftovers)}`);
+await db.query(`delete from public.tabs where template = 'proyectos'`);
+
+// ---------------------------------------------------------------- 009: ficha de cada tarea
+
+const legacyTask = await one(`insert into public.tasks (title) values ('Tarea de antes') returning id`);
+await asAdmin();
+await db.exec(migration('009_detalle_tareas.sql'));
+ok(true, '009_detalle_tareas.sql se ejecuta sin errores sobre una base con datos');
+
+await as(A);
+const lt = await one(`select kind, description, estimate_hours, spent_hours from public.tasks where id = $1`, [legacyTask.id]);
+ok(lt.kind === 'tarea' && lt.description === '' && lt.estimate_hours === null && lt.spent_hours === null, 'las tareas que ya existían son de tipo «tarea», sin descripción ni estimación');
+const web = await one(`insert into public.projects (name) values ('Web') returning id`);
+const bug = await one(
+  `insert into public.tasks (title, project_id, kind, description, estimate_hours, spent_hours) values ('Arreglar login', $1, 'error', 'Falla con Safari', 3.5, 1) returning id, kind`,
+  [web.id],
+);
+ok(bug.kind === 'error', 'una tarea guarda su tipo, descripción, estimación y horas dedicadas');
+ok(!!(await fails(`update public.tasks set estimate_hours = -1 where id = $1`, [bug.id])), 'la estimación no puede ser negativa');
+ok(!!(await fails(`update public.tasks set kind = 'Tipo raro' where id = $1`, [bug.id])), 'el tipo tiene que tener forma de identificador');
+ok(!(await fails(`insert into public.task_items (task_id, kind, body) values ($1, 'nota', 'Probado en iPhone')`, [bug.id])), 'una tarea admite notas');
+ok(!!(await fails(`insert into public.task_items (task_id, kind, url) values ($1, 'enlace', 'javascript:alert(1)')`, [bug.id])), 'los enlaces de una tarea tienen que ser http(s)');
+ok(!!(await fails(`insert into public.task_items (task_id, kind, file_path) values ($1, 'archivo', $2)`, [bug.id, `${B}/x.pdf`])), 'sus archivos, en la carpeta de su usuario');
+await db.query(`update public.projects set last_activity_at = now() - interval '30 days' where id = $1`, [web.id]);
+await db.query(`insert into public.task_items (task_id, kind, url) values ($1, 'enlace', 'https://example.com')`, [bug.id]);
+ok((await one(`select now() - last_activity_at < interval '1 minute' as fresh from public.projects where id = $1`, [web.id])).fresh, 'añadir algo a una tarea cuenta como actividad de su proyecto');
+ok(!(await fails(`insert into public.task_items (task_id, kind, body) values ($1, 'nota', 'suelta')`, [legacyTask.id])), 'también las tareas sin proyecto tienen ficha');
+
+await as(B);
+ok((await one(`select count(*)::int n from public.task_items`)).n === 0, 'B no ve las notas de las tareas de A');
+ok(!!(await fails(`insert into public.task_items (task_id, kind, body) values ($1, 'nota', 'intrusa')`, [bug.id])), 'ni puede añadir nada a una tarea de A');
+await db.exec(`reset role; set role anon;`);
+ok(!!(await fails(`select * from public.task_items`)), 'sin sesión no se ven');
+
+await as(A);
+await db.query(`delete from public.projects where id = $1`, [web.id]);
+await db.query(`delete from public.tasks where id = $1`, [legacyTask.id]);
+ok((await one(`select count(*)::int n from public.task_items`)).n === 0, 'borrar una tarea (o su proyecto) borra su ficha');
 
 // ---------------------------------------------------------------- Seguridad general (resto de tablas)
 

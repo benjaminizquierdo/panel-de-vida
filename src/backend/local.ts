@@ -5,7 +5,7 @@ import { subtree } from '../lib/pages';
 import { dueDates } from '../lib/recurring';
 import type { Block, FinanceCategory, Row, TableName, TxType, User, UserTab } from '../lib/types';
 import { addDays, today } from '../lib/utils';
-import type { Backend } from './types';
+import { MAX_DEMO_FILE_BYTES, type Backend } from './types';
 
 // Modo demo: cuentas y datos en localStorage de este navegador. Sirve para probar
 // la app sin servidor; no es seguro para datos reales (cualquiera con acceso al
@@ -21,9 +21,21 @@ const dataKey = (uid: string, table: TableName) => `pv:data:${uid}:${table}`;
 /** Igual que user_settings.pages_seeded (007_disenador.sql). */
 const seededKey = (uid: string) => `pv:pages-seeded:${uid}`;
 
-/** Igual que los `on delete cascade` del esquema SQL. */
+/** Proyecto migrado a 008_tipos_proyecto.sql (página Proyectos con «Foco de hoy»). */
+const migrated008Key = (uid: string) => `pv:migrated-008:${uid}`;
+/** Adjuntos del modo demo: el archivo entero como data URL. */
+const fileKey = (path: string) => `pv:file:${path}`;
+
+/** Igual que los `on delete cascade` del esquema SQL (se aplican en cadena). */
 const CASCADE: Partial<Record<TableName, [TableName, string][]>> = {
-  projects: [['tasks', 'project_id']],
+  tasks: [['task_items', 'task_id']],
+  projects: [
+    ['tasks', 'project_id'],
+    ['project_items', 'project_id'],
+    ['project_logs', 'project_id'],
+    ['tabs', 'project_id'],
+  ],
+  project_items: [['project_items', 'parent_id']],
   habits: [['habit_logs', 'habit_id']],
   finance_categories: [
     ['finance_categories', 'parent_id'],
@@ -34,6 +46,14 @@ const CASCADE: Partial<Record<TableName, [TableName, string][]>> = {
     ['tabs', 'parent_id'],
   ],
 };
+
+/** Igual que los `on delete set null`: el gasto de un proyecto borrado se queda en Finanzas. */
+const SET_NULL: Partial<Record<TableName, [TableName, string][]>> = {
+  projects: [['transactions', 'project_id']],
+};
+
+/** Tablas cuyos cambios cuentan como actividad de su proyecto (trigger touch_project() de la 008). */
+const TOUCHES_PROJECT = new Set<TableName>(['tasks', 'task_items', 'project_items', 'project_logs', 'transactions']);
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -151,6 +171,71 @@ export function createLocalBackend(): Backend {
     if (page.template && all.some((p) => p.id !== page.id && p.template === page.template)) {
       throw new Error('Esa categoría por defecto ya existe');
     }
+    if (page.project_id) {
+      if (page.parent_id) throw new Error('La página de un proyecto no puede ir dentro de otra');
+      if (!rows('projects').some((p) => p.id === page.project_id)) throw new Error('El proyecto no existe');
+      if (all.some((p) => p.id !== page.id && p.project_id === page.project_id)) throw new Error('Ese proyecto ya tiene su página');
+    }
+  };
+
+  /** Lo que comprueban las restricciones de project_items y project_logs en la 008. */
+  const checkProjectRow = (table: TableName, row: unknown, all: unknown[]) => {
+    const projectId = field(row, 'project_id');
+    if (!rows('projects').some((p) => p.id === projectId)) throw new Error('El proyecto no existe');
+    if (table === 'project_items') {
+      for (const key of ['url', 'image_url']) {
+        const v = field(row, key);
+        if (v !== null && v !== undefined && !/^https?:\/\//.test(String(v))) throw new Error('Los enlaces tienen que empezar por http:// o https://');
+      }
+    }
+    if (table === 'project_logs') {
+      const kind = field(row, 'kind');
+      const value = Number(field(row, 'value'));
+      if (kind === 'horas' && !(value > 0 && value <= 24)) throw new Error('Las horas tienen que estar entre 0 y 24');
+      if (kind === 'check' && all.some((r) => field(r, 'id') !== field(row, 'id') && field(r, 'kind') === 'check' && field(r, 'project_id') === projectId && field(r, 'date') === field(row, 'date'))) {
+        throw new Error('Ese día ya está marcado');
+      }
+    }
+  };
+
+  /** Lo que comprueban las restricciones de task_items en la 009. */
+  const checkTaskItem = (row: unknown) => {
+    if (!rows('tasks').some((t) => t.id === field(row, 'task_id'))) throw new Error('La tarea no existe');
+    const url = field(row, 'url');
+    if (url !== null && url !== undefined && !/^https?:\/\//.test(String(url))) throw new Error('Los enlaces tienen que empezar por http:// o https://');
+  };
+
+  /** Proyecto al que pertenece una fila (el de su tarea, en las notas y adjuntos de una tarea). */
+  const projectOfRow = (table: TableName, row: unknown) =>
+    table === 'task_items' ? rows('tasks').find((t) => t.id === field(row, 'task_id'))?.project_id : field(row, 'project_id');
+
+  /** Como el trigger touch_project(): la actividad de un proyecto es su último cambio. */
+  const touchProjects = (ids: unknown[]) => {
+    const set = new Set(ids.filter((id): id is string => typeof id === 'string'));
+    if (set.size === 0) return;
+    const now = new Date().toISOString();
+    save('projects', rows('projects').map((p) => (set.has(p.id) ? { ...p, last_activity_at: now } : p)));
+  };
+
+  /** Como el trigger tasks_set_completed_at(). */
+  const withCompletedAt = <T,>(row: T, before?: unknown): T => {
+    const status = field(row, 'status');
+    if (status !== 'hecha') return { ...row, completed_at: null };
+    if (before && field(before, 'status') === 'hecha') return { ...row, completed_at: field(before, 'completed_at') ?? new Date().toISOString() };
+    return { ...row, completed_at: field(row, 'completed_at') ?? new Date().toISOString() };
+  };
+
+  /** Borra filas y lo que cuelga de ellas, en cadena, como las claves foráneas. */
+  const removeRows = (table: TableName, ids: string[]) => {
+    if (ids.length === 0) return;
+    const gone = new Set(ids);
+    save(table, rows(table).filter((r) => !gone.has(r.id)));
+    for (const [child, fk] of CASCADE[table] ?? []) {
+      removeRows(child, rows(child).filter((r) => gone.has(field(r, fk) as string)).map((r) => r.id));
+    }
+    for (const [child, fk] of SET_NULL[table] ?? []) {
+      save(child, rows(child).map((r) => (gone.has(field(r, fk) as string) ? { ...r, [fk]: null } : r)));
+    }
   };
 
   const checkBlock = (block: Block, pages: UserTab[]) => {
@@ -167,6 +252,27 @@ export function createLocalBackend(): Backend {
     if (!cat || cat.type !== field(tx, 'type')) throw new Error('La categoría no corresponde al tipo de movimiento');
   };
 
+  /**
+   * Como el final de 008_tipos_proyecto.sql, una sola vez por cuenta: en la página Proyectos de
+   * siempre, el tablero general deja paso a «Foco de hoy».
+   */
+  const migrate008 = (userId: string) => {
+    if (localStorage.getItem(migrated008Key(userId))) return;
+    localStorage.setItem(migrated008Key(userId), '1');
+    const page = rows('tabs').find((t) => t.template === 'proyectos');
+    if (!page) return;
+    const blocks = rows('blocks');
+    const own = blocks.filter((b) => b.tab_id === page.id);
+    // Una página recién creada con la plantilla nueva ya tiene «Foco de hoy».
+    if (own.some((b) => b.type === 'foco_hoy')) return;
+    const general = new Set(own.filter((b) => b.type === 'tablero' && !b.content?.project).map((b) => b.id));
+    const next = blocks
+      .filter((b) => !general.has(b.id))
+      .map((b) => (b.tab_id === page.id && b.type === 'proyectos' ? { ...b, x: 0, w: COLS, y: b.y + 6 } : b));
+    next.push(makeRow<'blocks'>({ tab_id: page.id, type: 'foco_hoy', title: '🎯 Foco de hoy', content: {}, x: 0, y: 0, w: COLS, h: 6, sort_order: -1 }, userId));
+    save('blocks', next);
+  };
+
   /** Como insert_page_tree(): valida todo antes de guardar nada (todo o nada). */
   const insertTree = (seeds: PageSeed[], parentId: string | null) => {
     const userId = uid();
@@ -179,7 +285,15 @@ export function createLocalBackend(): Backend {
       let order = siblings.reduce((m, p) => Math.max(m, p.sort_order + 1), 0);
       for (const seed of list) {
         const page = makeRow<'tabs'>(
-          { section: null, parent_id: parent, name: seed.name, icon: seed.icon || '📄', template: seed.template ?? null, sort_order: order++ },
+          {
+            section: null,
+            parent_id: parent,
+            name: seed.name,
+            icon: seed.icon || '📄',
+            template: seed.template ?? null,
+            project_id: seed.project_id ?? null,
+            sort_order: order++,
+          },
           userId,
         );
         checkPage(page, [...pages, ...newPages, page]);
@@ -253,12 +367,17 @@ export function createLocalBackend(): Backend {
     },
 
     async insert<T extends TableName>(table: T, row: SeedRow<T>) {
-      const created = makeRow<T>(row, uid());
+      let created = makeRow<T>(row, uid());
       if (table === 'finance_categories') checkCategory(created as FinanceCategory);
       if (table === 'transactions') checkTransaction(created);
       if (table === 'tabs') checkPage(created as UserTab, [...rows('tabs'), created as UserTab]);
       if (table === 'blocks') checkBlock(created as Block, rows('tabs'));
+      if (table === 'project_items' || table === 'project_logs') checkProjectRow(table, created, rows(table));
+      if (table === 'task_items') checkTaskItem(created);
+      if (table === 'tasks') created = withCompletedAt(created);
+      if (table === 'projects') created = { kind: 'general', fields: {}, ...created, last_activity_at: new Date().toISOString() } as Row<T>;
       save(table, [...rows(table), created]);
+      if (TOUCHES_PROJECT.has(table)) touchProjects([projectOfRow(table, created)]);
       return created;
     },
 
@@ -285,12 +404,22 @@ export function createLocalBackend(): Backend {
     },
 
     async update<T extends TableName>(table: T, id: string, patch: Partial<SeedRow<T>>) {
-      const next = rows(table).map((r) => (r.id === id ? ({ ...r, ...patch } as Row<T>) : r));
+      const before = rows(table).find((r) => r.id === id);
+      const next = rows(table).map((r) => {
+        if (r.id !== id) return r;
+        let row = { ...r, ...patch } as Row<T>;
+        if (table === 'tasks') row = withCompletedAt(row, r);
+        if (table === 'projects' && !('last_activity_at' in patch)) row = { ...row, last_activity_at: new Date().toISOString() };
+        return row;
+      });
       const updated = next.find((r) => r.id === id);
       if (table === 'finance_categories') checkCategory(updated as FinanceCategory);
       if (table === 'tabs' && updated) checkPage(updated as UserTab, next as UserTab[]);
       if (table === 'blocks' && updated) checkBlock(updated as Block, rows('tabs'));
+      if ((table === 'project_items' || table === 'project_logs') && updated) checkProjectRow(table, updated, next);
+      if (table === 'task_items' && updated) checkTaskItem(updated);
       save(table, next);
+      if (TOUCHES_PROJECT.has(table)) touchProjects([projectOfRow(table, before), projectOfRow(table, updated)]);
     },
 
     async remove(table, id) {
@@ -305,10 +434,10 @@ export function createLocalBackend(): Backend {
         // Las subcategorías caen en cascada: también sus presupuestos.
         save('budgets', rows('budgets').filter((b) => !ids.includes(b.category_id)));
       }
-      save(table, rows(table).filter((r) => r.id !== id));
-      for (const [child, fk] of CASCADE[table] ?? []) {
-        save(child, rows(child).filter((r) => field(r, fk) !== id));
-      }
+      const before = rows(table).find((r) => r.id === id);
+      const project = before && projectOfRow(table, before);
+      removeRows(table, [id]);
+      if (TOUCHES_PROJECT.has(table)) touchProjects([project]);
     },
 
     async mergeCategory(sourceId, targetId) {
@@ -354,7 +483,10 @@ export function createLocalBackend(): Backend {
     async seedPages(pages) {
       // Mismo algoritmo que seed_default_pages() en 007_disenador.sql.
       const userId = uid();
-      if (localStorage.getItem(seededKey(userId))) return 0;
+      if (localStorage.getItem(seededKey(userId))) {
+        migrate008(userId);
+        return 0;
+      }
       const created = insertTree(pages, null);
       localStorage.setItem(seededKey(userId), '1');
       const all = rows('tabs');
@@ -377,11 +509,41 @@ export function createLocalBackend(): Backend {
           .forEach((b, n) => placed.set(b.id, { x: (n % 2) * 6, y: Math.floor(n / 2) * 6, w: 6, h: 6 }));
       }
       if (placed.size) save('blocks', rows('blocks').map((b) => ({ ...b, ...placed.get(b.id) })));
+      migrate008(userId);
       return created;
     },
 
     async insertPages(pages, parentId) {
       return insertTree(pages, parentId);
+    },
+
+    async uploadFile(path, file) {
+      if (file.size > MAX_DEMO_FILE_BYTES) throw new Error('En el modo demo los archivos pueden ocupar como mucho 1 MB');
+      if (path.split('/')[0] !== uid()) throw new Error('Solo puedes subir archivos a tu carpeta');
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('No se ha podido leer el archivo'));
+        reader.readAsDataURL(file);
+      });
+      try {
+        localStorage.setItem(fileKey(path), dataUrl);
+      } catch {
+        throw new Error('No queda sitio en este navegador para más archivos (modo demo)');
+      }
+    },
+
+    async fileUrl(path) {
+      if (path.split('/')[0] !== uid()) throw new Error('Archivo no encontrado');
+      const dataUrl = localStorage.getItem(fileKey(path));
+      if (!dataUrl) throw new Error('Archivo no encontrado');
+      // Los navegadores no dejan abrir un data: en una pestaña; una URL de blob, sí.
+      return URL.createObjectURL(await (await fetch(dataUrl)).blob());
+    },
+
+    async removeFiles(paths) {
+      const me = uid();
+      for (const path of paths) if (path.split('/')[0] === me) localStorage.removeItem(fileKey(path));
     },
 
     async generateRecurring(until) {

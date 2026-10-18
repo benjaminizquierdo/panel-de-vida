@@ -112,7 +112,7 @@ export function DayScore() {
 const level = (ratio: number | undefined) => (ratio === undefined || ratio === 0 ? 0 : Math.min(4, Math.ceil(ratio * 4)));
 
 /** Mapa de un año (o 26 semanas) con un cuadrado por día. */
-function DayGrid({ columns, value, label, year }: {
+export function DayGrid({ columns, value, label, year }: {
   columns: string[][];
   value: (d: string) => number | undefined;
   label: (d: string) => string;

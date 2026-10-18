@@ -31,6 +31,8 @@ export interface BlockFilter {
   source: 'project' | 'expense_category' | 'habits' | 'habit' | 'savings_goal';
   /** Texto de «sin filtro» (todos). Sin él, hay que elegir uno. */
   allLabel?: string;
+  /** Con source 'project': tipos de proyecto que se ofrecen primero (lib/projectKinds.ts). */
+  projectKinds?: string[];
 }
 
 export const AREA_OPTION: BlockOption = {
@@ -46,6 +48,8 @@ export const AREA_OPTION: BlockOption = {
 };
 
 const PROJECT_FILTER: BlockFilter = { key: 'project', label: 'Proyecto', source: 'project', allLabel: 'Todos los proyectos' };
+/** Bloques de un solo proyecto. Sin elegir, muestran el primero activo de esos tipos. */
+const oneProject = (...projectKinds: string[]): BlockFilter[] => [{ key: 'project', label: 'Proyecto', source: 'project', projectKinds }];
 const CATEGORY_FILTER: BlockFilter = { key: 'category', label: 'Categoría de gasto', source: 'expense_category', allLabel: 'Todas las categorías' };
 
 export interface BlockKind {
@@ -147,20 +151,20 @@ export const BLOCK_KINDS: BlockKind[] = [
   { type: 'proyectos_activos', name: 'Proyectos activos', icon: '🚀', description: 'Progreso de cada proyecto activo.', group: 'proyectos', w: 6, h: 9 },
   {
     type: 'proyectos',
-    name: 'Proyectos',
+    name: 'Mis proyectos',
     icon: '📁',
-    description: 'Tus proyectos con su estado y progreso, y el formulario para crear uno.',
+    description: 'Tarjetas de tus proyectos con su progreso, siguiente tarea y semáforo; filtros por tipo y estado, y «+ Nuevo proyecto».',
     group: 'proyectos',
-    w: 4,
-    h: 19,
-    minW: 3,
-    catalog: false,
+    w: 12,
+    h: 14,
+    minW: 4,
+    isNew: true,
   },
   {
     type: 'tablero',
-    name: 'Tablero de tareas',
+    name: 'Kanban de tareas',
     icon: '🗂️',
-    description: 'Tareas en columnas Pendiente · En curso · Hecha, con filtro por proyecto.',
+    description: 'Tareas en columnas Pendiente · En curso · Hecha, de un proyecto o de todos.',
     group: 'proyectos',
     w: 8,
     h: 19,
@@ -428,6 +432,36 @@ export const BLOCK_KINDS: BlockKind[] = [
     isNew: true,
     filters: [{ key: 'goal', label: 'Objetivo de ahorro', source: 'savings_goal' }],
   },
+
+  // ------------------------------------------------------------ Nuevos: tipos de proyecto
+  {
+    type: 'foco_hoy',
+    name: 'Foco de hoy',
+    icon: '🎯',
+    description: 'La tarea más prioritaria de todos tus proyectos (vencidas, de hoy, prioridad alta…) y las dos siguientes.',
+    group: 'proyectos',
+    w: 12,
+    h: 6,
+    isNew: true,
+  },
+  { type: 'proyecto_resumen', name: 'Resumen del proyecto', icon: '📌', description: 'Progreso, semáforo, siguiente paso y los datos propios del proyecto (cliente, examen, destino…).', group: 'proyectos', w: 12, h: 6, isNew: true, filters: oneProject() },
+  { type: 'proyecto_fases', name: 'Fases', icon: '🪜', description: 'Las fases del proyecto (propuesta → entregado, idea → publicado): pulsa una para avanzar.', group: 'proyectos', w: 12, h: 4, isNew: true, filters: oneProject('profesional', 'creativo') },
+  { type: 'proyecto_cuenta_atras', name: 'Cuenta atrás del proyecto', icon: '⏳', description: 'Días que faltan para la entrega, el examen o la salida del viaje.', group: 'proyectos', w: 4, h: 6, isNew: true, filters: oneProject('profesional', 'estudios', 'viaje', 'reto', 'salud') },
+  { type: 'proyecto_checklist', name: 'Checklist de tareas', icon: '☑️', description: 'Las tareas de un proyecto como lista simple: escribe, marca y listo.', group: 'proyectos', w: 6, h: 10, isNew: true, filters: oneProject('hogar', 'viaje', 'creativo') },
+  { type: 'proyecto_temario', name: 'Temario', icon: '📖', description: 'Módulos con sus temas: marca lo estudiado y mira el % de cada módulo.', group: 'proyectos', w: 8, h: 14, minW: 4, isNew: true, filters: oneProject('estudios') },
+  { type: 'proyecto_horas', name: 'Registro de horas', icon: '⏱️', description: 'Apunta las horas dedicadas y compáralas con las estimadas.', group: 'proyectos', w: 4, h: 10, isNew: true, filters: oneProject('profesional', 'estudios', 'aprendizaje') },
+  { type: 'proyecto_racha', name: 'Racha del reto', icon: '🔥', description: 'Marca el día, mira tu racha actual y tu mejor racha, y el mapa de calor de 6 meses.', group: 'proyectos', w: 12, h: 12, minW: 4, isNew: true, filters: oneProject('reto') },
+  { type: 'proyecto_valor', name: 'Registro de valores', icon: '⚖️', description: 'Apunta tu peso, km o minutos y mira cuánto te falta para el objetivo.', group: 'proyectos', w: 4, h: 12, isNew: true, filters: oneProject('salud') },
+  { type: 'proyecto_ideas', name: 'Lluvia de ideas', icon: '💡', description: 'Apunta ideas al vuelo y convierte las buenas en tareas.', group: 'proyectos', w: 6, h: 10, isNew: true, filters: oneProject('creativo') },
+  { type: 'proyecto_referencias', name: 'Galería de referencias', icon: '🖼️', description: 'Imágenes y enlaces de inspiración: sube una imagen o pega una dirección.', group: 'proyectos', w: 6, h: 12, isNew: true, filters: oneProject('creativo') },
+  { type: 'proyecto_recursos', name: 'Recursos', icon: '📚', description: 'Libros, cursos o vídeos con su estado (pendiente, en curso, terminado) y tus notas.', group: 'proyectos', w: 8, h: 12, minW: 4, isNew: true, filters: oneProject('aprendizaje') },
+  { type: 'proyecto_presupuesto', name: 'Presupuesto del proyecto', icon: '💶', description: 'Presupuesto frente a gastado. Los gastos se apuntan en Finanzas, vinculados al proyecto.', group: 'proyectos', w: 8, h: 14, minW: 4, isNew: true, filters: oneProject('viaje') },
+  { type: 'proyecto_notas', name: 'Notas y adjuntos', icon: '📎', description: 'Notas, enlaces y documentos de un proyecto.', group: 'proyectos', w: 6, h: 12, isNew: true, filters: oneProject() },
+  { type: 'grafico_avance', name: 'Avance del proyecto', icon: '📈', description: 'Gráfico de tareas creadas frente a hechas, acumuladas semana a semana.', group: 'proyectos', w: 6, h: 10, minH: 7, fixedHeight: true, isNew: true, filters: [PROJECT_FILTER] },
+  { type: 'grafico_tareas_semana', name: 'Tareas completadas por semana', icon: '📊', description: 'Cuántas tareas terminas cada semana (las últimas 8).', group: 'proyectos', w: 6, h: 10, minH: 7, fixedHeight: true, isNew: true, filters: [PROJECT_FILTER] },
+  { type: 'grafico_horas', name: 'Horas por semana', icon: '🕒', description: 'Gráfico de las horas dedicadas cada semana, con el total frente a las estimadas.', group: 'proyectos', w: 6, h: 10, minH: 7, fixedHeight: true, isNew: true, filters: [PROJECT_FILTER] },
+  { type: 'grafico_evolucion', name: 'Evolución hacia el objetivo', icon: '📉', description: 'Gráfico de tus valores medidos con la línea del objetivo.', group: 'proyectos', w: 8, h: 11, minH: 7, fixedHeight: true, isNew: true, filters: oneProject('salud') },
+  { type: 'grafico_proyectos', name: 'Proyectos por tipo', icon: '🍩', description: 'Gráfico circular de tus proyectos por tipo, y cuántos hay activos, pausados y terminados.', group: 'proyectos', w: 6, h: 13, minH: 9, fixedHeight: true, isNew: true },
 ];
 
 export const blockKind = (type: string) => BLOCK_KINDS.find((k) => k.type === type);

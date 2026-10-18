@@ -3,9 +3,10 @@ import { backend } from '../backend';
 import { NavContext, UserContext, type Nav } from '../lib/pageContext';
 import { childrenOf, initialPage, placePage, subtree } from '../lib/pages';
 import { DEFAULT_PAGES, restorable, templateSeed, type Restorable } from '../lib/pageTemplates';
+import { projectPageSeed } from '../lib/projectKinds';
 import { nextSortOrder } from '../lib/blocks';
 import { toast } from '../lib/toast';
-import type { User, UserTab } from '../lib/types';
+import type { Project, User, UserTab } from '../lib/types';
 import { DESKTOP, useMediaQuery } from '../lib/useMediaQuery';
 import { resetTables, useTable } from '../lib/useTable';
 import PageView from '../pages/PageView';
@@ -62,15 +63,24 @@ function Shell({ user }: { user: User }) {
   const tabs = useTable('tabs');
   const blocks = useTable('blocks');
   const desktop = useMediaQuery(DESKTOP);
-  const pages = useMemo(() => tabs.rows.filter((p) => !p.section), [tabs.rows]);
+  // Las páginas de los proyectos no salen en el menú: se abren desde sus tarjetas.
+  const pages = useMemo(() => tabs.rows.filter((p) => !p.section && !p.project_id), [tabs.rows]);
   const [currentId, setCurrentId] = useState<string | null>(() => readKey(pageKey(user.id)));
+  // Página del menú desde la que se abrió el proyecto actual (para volver con «←»).
+  const [returnId, setReturnId] = useState<string | null>(null);
+  // Proyecto que se está abriendo: en cuanto llega su página, se navega a ella.
+  const [opening, setOpening] = useState<string | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [sheet, setSheet] = useState<SheetState | null>(null);
   // Página recién creada: se abre ya en modo personalizar.
   const [fresh, setFresh] = useState<string | null>(null);
 
   const legacy = readKey(legacyTabKey(user.id));
-  const current = initialPage(pages, currentId ?? pages.find((p) => p.template === legacy)?.id ?? null);
+  // (La base de datos borra la página de un proyecto con él: si existe, su proyecto también.)
+  const projectPage = tabs.rows.find((p) => p.id === currentId && !!p.project_id);
+  const menuPage = initialPage(pages, projectPage ? returnId : (currentId ?? pages.find((p) => p.template === legacy)?.id ?? null));
+  const current = projectPage ?? menuPage;
+  const returnTo = pages.find((p) => p.id === returnId) ?? pages.find((p) => p.template === 'proyectos') ?? menuPage;
   const missing = restorable(pages);
 
   const go = (id: string) => {
@@ -84,11 +94,41 @@ function Shell({ user }: { user: User }) {
     window.scrollTo({ top: 0 });
   };
 
+  const openProject = async (project: Pick<Project, 'id' | 'name' | 'kind'>) => {
+    if (current && !current.project_id) setReturnId(current.id);
+    const existing = tabs.rows.find((t) => t.project_id === project.id);
+    if (existing) return go(existing.id);
+    setOpening(project.id);
+    try {
+      await backend.insertPages([projectPageSeed(project)], null);
+    } catch (e) {
+      // Puede que ya exista (creada en otra pestaña): al recargar se abre igualmente.
+      if (!/ya tiene su página|duplicate|unique/i.test(e instanceof Error ? e.message : String(e))) {
+        setOpening(null);
+        toast(e instanceof Error ? e.message : String(e), 'error');
+        return;
+      }
+    }
+    await Promise.all([tabs.reload(), blocks.reload()]);
+  };
+
+  // La página del proyecto que se estaba abriendo ya ha llegado: se navega a ella.
+  useEffect(() => {
+    if (!opening) return;
+    const page = tabs.rows.find((t) => t.project_id === opening);
+    if (page) {
+      setOpening(null);
+      go(page.id);
+    }
+  }, [opening, tabs.rows]);
+
   const nav: Nav = {
     pages,
     current,
     go,
     pageOf: (template) => pages.find((p) => p.template === template),
+    openProject: (p) => void openProject(p),
+    returnTo,
   };
 
   const place = async (id: string, parentId: string | null, index: number) => {
@@ -187,7 +227,7 @@ function Shell({ user }: { user: User }) {
           <Sidebar
             userId={user.id}
             pages={pages}
-            currentId={current?.id}
+            currentId={current?.project_id ? returnTo?.id : current?.id}
             open={drawer}
             draggable={desktop}
             restorable={missing.length}
@@ -198,7 +238,7 @@ function Shell({ user }: { user: User }) {
             onPlace={(id, parentId, index) => void place(id, parentId, index)}
           />
           <main className="content" key={current?.id ?? 'vacio'}>
-            {tabs.loading ? (
+            {tabs.loading || (projectPage === undefined && opening) ? (
               <p className="empty">Cargando…</p>
             ) : current ? (
               <ErrorBoundary scope={`la página «${current.name}»`}>

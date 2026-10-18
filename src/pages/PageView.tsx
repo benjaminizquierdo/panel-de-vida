@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import BlockCatalog from '../components/BlockCatalog';
 import BlockFrame from '../components/BlockFrame';
+import ErrorBoundary from '../components/ErrorBoundary';
 import PageCanvas from '../components/PageCanvas';
 import { BlockSettings, type BlockPatch } from '../components/PageSheets';
+import ProjectHeader, { type ProjectTab } from '../components/ProjectHeader';
+import ProjectSheet from '../components/ProjectSheet';
 import Sheet from '../components/Sheet';
 import { Card, Empty } from '../components/ui';
 import { blockKind, type BlockKind } from '../lib/blockKinds';
@@ -17,6 +20,8 @@ import { useTable } from '../lib/useTable';
 import { monthKey, today } from '../lib/utils';
 
 const MAX_BLOCKS = 50;
+
+const ProjectNotes = lazy(() => import('../blocks/app/projectNotes'));
 
 const rectOf = (b: Block): Rect => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h });
 const layoutPatch = (changed: Rect[]) => changed.map(({ id, x, y, w, h }) => ({ id, patch: { x, y, w, h } }));
@@ -35,6 +40,11 @@ export default function PageView({ page, pages, startEditing, onEditPage, onAddC
   const nav = useNav();
   const desktop = useMediaQuery(DESKTOP);
   const blocks = useTable('blocks');
+  const projects = useTable('projects');
+  // Página de un proyecto: cabecera propia, pestaña de notas y bloques fijados a él.
+  const project = page.project_id ? projects.rows.find((p) => p.id === page.project_id) : undefined;
+  const [tab, setTab] = useState<ProjectTab>('vista');
+  const [projectSheet, setProjectSheet] = useState(false);
   const [editing, setEditing] = useState(startEditing);
   const [catalog, setCatalog] = useState(false);
   const [settings, setSettings] = useState<string | null>(null);
@@ -50,18 +60,20 @@ export default function PageView({ page, pages, startEditing, onEditPage, onAddC
     if (mine.length >= MAX_BLOCKS) return toast(`Como mucho ${MAX_BLOCKS} bloques por página`, 'error');
     if (moved.length) await blocks.updateMany(layoutPatch(moved));
     const pos = at ? { ...at, w: Math.min(kind.w, COLS - at.x), h: kind.h } : placeNew(mine.map(rectOf), kind.w, kind.h);
+    // En la página de un proyecto, los bloques que se pueden fijar a un proyecto van a ese.
+    const forProject = !!page.project_id && !!kind.filters?.some((f) => f.source === 'project');
     const created = await blocks.add({
       tab_id: page.id,
       type: kind.type,
       title: kind.frame === false ? '' : kind.name,
-      content: kind.empty?.() ?? {},
+      content: { ...(kind.empty?.() ?? {}), ...(forProject ? { project: page.project_id } : {}) },
       sort_order: nextSortOrder(mine),
       ...pos,
     });
     if (created) {
       setCatalog(false);
       // Si el bloque se puede filtrar (una categoría, un hábito…), se abren sus ajustes para elegirlo.
-      if (kind.filters?.length) setSettings(created.id);
+      if (kind.filters?.some((f) => !(forProject && f.source === 'project'))) setSettings(created.id);
       toast(`Bloque «${kind.name}» añadido`);
     }
   };
@@ -100,6 +112,34 @@ export default function PageView({ page, pages, startEditing, onEditPage, onAddC
       <div className={`page ${editing && desktop ? 'with-catalog' : ''}`}>
         <div className="page-main stack-lg">
           <header className="page-head">
+            {page.project_id ? (
+              project ? (
+                <ProjectHeader
+                  project={project}
+                  tab={tab}
+                  onTab={(t) => {
+                    setTab(t);
+                    setEditing(false);
+                  }}
+                  onSettings={() => setProjectSheet(true)}
+                  actions={
+                    <>
+                      {editing && !desktop && (
+                        <button type="button" className="btn ghost sm" onClick={() => setCatalog(true)}>
+                          ＋ Bloque
+                        </button>
+                      )}
+                      <button type="button" className={`btn sm ${editing ? 'primary' : 'ghost'}`} aria-pressed={editing} onClick={() => setEditing(!editing)}>
+                        {editing ? '✓ Listo' : '✎ Personalizar'}
+                      </button>
+                    </>
+                  }
+                />
+              ) : (
+                <Empty>Cargando…</Empty>
+              )
+            ) : (
+              <>
             {path.length > 0 && (
               <nav className="breadcrumbs" aria-label="Estás en">
                 {path.map((p) => (
@@ -146,6 +186,8 @@ export default function PageView({ page, pages, startEditing, onEditPage, onAddC
                 )}
               </nav>
             )}
+              </>
+            )}
             {editing && (
               <p className="customize-hint" role="status">
                 {desktop
@@ -155,7 +197,15 @@ export default function PageView({ page, pages, startEditing, onEditPage, onAddC
             )}
           </header>
 
-          {blocks.loading ? (
+          {page.project_id && tab === 'notas' ? (
+            <ErrorBoundary scope="las notas y adjuntos">
+              <Suspense fallback={<Empty>Cargando…</Empty>}>
+                <section className="card">
+                  <ProjectNotes projectId={page.project_id} />
+                </section>
+              </Suspense>
+            </ErrorBoundary>
+          ) : blocks.loading ? (
             <Empty>Cargando…</Empty>
           ) : mine.length === 0 && !editing ? (
             <Card>
@@ -226,6 +276,7 @@ export default function PageView({ page, pages, startEditing, onEditPage, onAddC
           <BlockCatalog desktop={false} onPick={(k) => void add(k)} />
         </Sheet>
       )}
+      {projectSheet && project && <ProjectSheet project={project} onClose={() => setProjectSheet(false)} />}
       {editingBlock && (
         <BlockSettings
           key={editingBlock.id}

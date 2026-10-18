@@ -122,6 +122,31 @@ Además están los básicos (notas, checklist que puede reiniciarse cada día o 
 
 Los datos están en `tabs` (páginas, con `parent_id` para anidar y `template` para las de por defecto) y `blocks` (tipo, título, contenido JSON y posición `x, y, w, h` en una rejilla de 12 columnas), migraciones 006 y 007. Al aplicar la 007, las sub-pestañas de la versión anterior pasan a ser subpáginas de su categoría, con sus bloques.
 
+## Proyectos por tipos
+
+Cada proyecto es de un **tipo**, con su icono, color, campos propios y una vista adaptada:
+
+| Tipo | Campos | Su vista |
+|---|---|---|
+| 💼 Profesional | cliente, entrega, horas estimadas, fase (propuesta → entregado) | fases, kanban, horas estimadas frente a reales, cuenta atrás, avance |
+| 🎓 Estudios | curso o certificación, fecha de examen, horas previstas | temario por módulos con %, cuenta atrás al examen, horas de estudio |
+| 🔥 Hábito / reto | frecuencia (cada día o X veces por semana), fin opcional | marcar hoy, racha actual y mejor racha, mapa de calor |
+| 🎨 Creativo | fase (idea → publicado) | lluvia de ideas, galería de referencias, fases |
+| 💪 Salud y deporte | unidad, valor inicial, objetivo | registro de valores y gráfico de evolución con la línea del objetivo |
+| 🏠 Personal / hogar | — | checklist simple |
+| 📚 Aprendizaje libre | — | recursos con estado (pendiente / en curso / terminado) y notas |
+| ✈️ Viaje / evento | destino, fechas, presupuesto | cuenta atrás, presupuesto frente a gastado, checklist de preparación |
+| 📁 General | — | kanban |
+
+- **Página Proyectos**: «Foco de hoy» (la tarea más prioritaria de todos los proyectos activos: vencidas, de hoy, prioridad, fecha), tarjetas con progreso, siguiente paso y **semáforo** (rojo: tareas vencidas; amarillo: sin tareas pendientes o 7 días sin actividad; verde: al día; gris: pausado o terminado), filtros por tipo y estado y **＋ Nuevo proyecto** (primero el tipo, luego sus campos).
+- **Página de cada proyecto**: se crea la primera vez que lo abres con la plantilla de su tipo y es una página del diseñador más (✎ Personalizar), aunque no sale en el menú. Tiene la pestaña **Notas y adjuntos** (notas, enlaces y documentos). En ⚙ Proyecto se editan sus datos, su estado y su tipo, se restablece la vista de su tipo o se elimina.
+- **Gastos de un viaje**: son movimientos normales de Finanzas vinculados al proyecto (cuentan en el presupuesto del mes). Si borras el proyecto, el gasto se queda en Finanzas.
+- **Ficha de cada tarea**: en el kanban (y en «Foco de hoy»), pulsar una tarea abre su ficha, al estilo de un *work item* de DevOps: título, **tipo** (tarea, error, mejora, investigación, diseño, documentación, reunión), estado, prioridad, fecha límite, proyecto, **estimación y horas dedicadas** (con lo que queda), **descripción** y sus **notas, enlaces y documentos**. La tarjeta muestra el tipo (con su color), el tiempo, si tiene descripción y cuántos adjuntos tiene, y cada columna suma sus horas. Los tipos de tarea están en `TASK_KINDS` (`src/lib/tasks.ts`); datos en `tasks` (`kind`, `description`, `estimate_hours`, `spent_hours`) y `task_items`, migración 009.
+- **Adjuntos**: en Supabase Storage (bucket privado `adjuntos`, una carpeta por usuario, hasta 10 MB por archivo); en el modo demo, en el navegador (hasta 1 MB).
+- Todos los bloques nuevos están en el catálogo (grupo «Proyectos y tareas»), también los gráficos: avance del proyecto, tareas completadas por semana, horas por semana, evolución hacia el objetivo y proyectos por tipo.
+
+Los tipos se definen solo con configuración en `PROJECT_KINDS` (`src/lib/projectKinds.ts`); los cálculos de progreso, semáforo, foco y rachas están en `src/lib/projects.ts` (probados en `tests/projects.test.ts`). Datos: `projects.kind` y `projects.fields`, `project_items` (módulos, temas, recursos, ideas, referencias, notas, enlaces y archivos), `project_logs` (horas, valores y días cumplidos), `transactions.project_id` y `tabs.project_id`, migración 008.
+
 ## Activar el asistente de IA
 
 El asistente es una [Edge Function](https://supabase.com/docs/guides/functions) de Supabase (`supabase/functions/assistant`) que llama a la API de Claude con herramientas para registrar y consultar datos. Puede **añadir y modificar**, nunca borrar, y cada usuario tiene un **límite diario de mensajes** (30 por defecto) para acotar el coste. Sin esto configurado, la app funciona igual y el chat avisa de que no está disponible.
@@ -174,7 +199,7 @@ npm run panel -- add goals '{"title": "Correr 10 km", "horizon": "trimestral", "
 npm run typecheck       # tipos de TypeScript
 npm run test:db         # ejecuta los .sql en Postgres (PGlite) y comprueba el aislamiento entre usuarios
 npm run test:assistant  # ejecuta la Edge Function en Deno contra Supabase y Claude simulados
-npm run test:lib        # importador, periódicos, bloques, errores, rejilla, árbol de páginas y cálculos que cruzan datos
+npm run test:lib        # importador, periódicos, bloques, errores, rejilla, árbol de páginas, cálculos que cruzan datos y proyectos
 npm run build           # build de producción en dist/
 ```
 
@@ -200,6 +225,8 @@ supabase/
     005_periodicos.sql  Movimientos periódicos y su generación diaria con pg_cron
     006_pestanas.sql    Sub-pestañas personalizadas y sus bloques
     007_disenador.sql   Árbol de páginas sin límite, posición y tamaño de los bloques, categorías por defecto
+    008_tipos_proyecto.sql Tipos de proyecto, temario/recursos/notas, registros, gastos por proyecto y adjuntos
+    009_detalle_tareas.sql Ficha de cada tarea: tipo, descripción, estimación, horas y sus notas, enlaces y documentos
   functions/assistant/
     index.ts      Servidor: sesión, cupo, bucle de herramientas con Claude
     tools.ts      Herramientas (registrar gastos, periódicos, hábitos, salud, tareas, objetivos; consultar)
@@ -216,6 +243,8 @@ tests/
   layout.test.ts     Test de la rejilla del panel (compactar, huecos, flechas del móvil)
   pages.test.ts      Test del árbol de páginas, del catálogo de bloques y de las categorías por defecto
   insights.test.ts   Test de correlaciones, puntuación del día, rachas, próximos cargos y ritmo de gasto
+  projects.test.ts   Test de los tipos de proyecto: campos, plantillas, progreso, semáforo, foco y rachas
+  tasks.test.ts      Test de los tipos de tarea y de su tiempo (estimado, dedicado y restante)
 ```
 
 ## Personalizar
@@ -223,5 +252,6 @@ tests/
 - **Hábitos, categorías y presupuestos con los que empieza cada cuenta**: `src/lib/defaults.ts` (modo demo) y, para Supabase, `create_default_finance_categories()` y `seed_new_user()` en una migración nueva. Cada usuario puede después cambiar sus categorías desde Finanzas → Categorías.
 - **Añadir un banco al importador**: escribe su lector en `src/lib/importer.ts` (reconocer la cabecera y convertir cada fila; `readGeneric()` ya resuelve columnas de fecha, importe y texto), pon su logo en `src/assets/banks/` y añádelo a `BANKS` en `src/lib/banks.ts` con sus instrucciones. Su `id` queda guardado como origen de los movimientos importados, así que no se cambia una vez publicado.
 - **Añadir un tipo de bloque**: su nombre, descripción, grupo, tamaño y ajustes en `BLOCK_KINDS` (`src/lib/blockKinds.ts`) y su componente en `src/blocks/` (registrado en `src/blocks/index.tsx`). No hace falta migración: la base de datos acepta cualquier tipo con forma de identificador.
+- **Añadir un tipo de proyecto**: una entrada en `PROJECT_KINDS` (`src/lib/projectKinds.ts`) con sus campos, fases, regla de progreso y plantilla de bloques, y su id en `supabase/functions/assistant/projectKinds.ts`. No hace falta migración.
 - **Cambiar las categorías por defecto**: `DEFAULT_PAGES` en `src/lib/pageTemplates.ts` (afecta a las cuentas nuevas y a «Restaurar»).
 - **Tema**: los colores están como variables CSS al principio de `src/styles.css`, con versión clara y oscura (sigue el tema del sistema).

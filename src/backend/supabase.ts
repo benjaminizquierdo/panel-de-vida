@@ -12,6 +12,17 @@ const fail = (error: { message: string }): never => {
   throw new Error(MESSAGES[error.message] ?? error.message);
 };
 
+/** Bucket de los adjuntos (008_tipos_proyecto.sql). */
+const BUCKET = 'adjuntos';
+
+const storageError = (error: { message: string }) => ({
+  message: /bucket not found/i.test(error.message)
+    ? 'Falta crear el almacén de adjuntos: aplica la migración 008 en Supabase'
+    : /exceeded the maximum allowed size|payload too large|too large/i.test(error.message)
+      ? 'El archivo es demasiado grande (como mucho 10 MB)'
+      : error.message,
+});
+
 const toUser = (u: SupabaseUser): User => ({
   id: u.id,
   email: u.email ?? '',
@@ -113,6 +124,23 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
       const { data, error } = await sb.rpc('insert_page_tree', { p_pages: pages, p_parent: parentId });
       if (error) fail(error);
       return Number(data);
+    },
+
+    async uploadFile(path, file) {
+      const { error } = await sb.storage.from(BUCKET).upload(path, file, { contentType: file.type || undefined });
+      if (error) fail(storageError(error));
+    },
+
+    async fileUrl(path) {
+      const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
+      if (error) fail(storageError(error));
+      return data!.signedUrl;
+    },
+
+    async removeFiles(paths) {
+      if (paths.length === 0) return;
+      const { error } = await sb.storage.from(BUCKET).remove(paths);
+      if (error) fail(storageError(error));
     },
 
     async assistant(request) {

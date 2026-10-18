@@ -21,6 +21,9 @@ const finance = () => import('./app/finance');
 const insights = () => import('./app/insights');
 const time = () => import('./app/time');
 const money = () => import('./app/money');
+const projectViews = () => import('./app/projectViews');
+const projectNotes = () => import('./app/projectNotes');
+const projectCharts = () => import('./app/projectCharts');
 
 const from = <M,>(load: () => Promise<M>, pick: (m: M) => ComponentType<BlockProps>) => lazy(() => load().then((m) => ({ default: pick(m) })));
 
@@ -36,8 +39,27 @@ export const BLOCK_COMPONENTS: Record<string, AnyBlock> = {
 
   proximas_fechas: from(projects, (m) => m.UpcomingDeadlines),
   proyectos_activos: from(projects, (m) => m.ActiveProjects),
-  proyectos: from(projects, (m) => m.ProjectList),
+  proyectos: from(projects, (m) => m.ProjectCards),
   tablero: from(projects, (m) => m.TaskBoard),
+  foco_hoy: from(projects, (m) => m.FocusToday),
+  proyecto_resumen: from(projects, (m) => m.ProjectSummary),
+  proyecto_fases: from(projects, (m) => m.ProjectPhases),
+  proyecto_cuenta_atras: from(projects, (m) => m.ProjectCountdown),
+  proyecto_checklist: from(projects, (m) => m.ProjectChecklist),
+  proyecto_temario: from(projectViews, (m) => m.Syllabus),
+  proyecto_horas: from(projectViews, (m) => m.HoursLog),
+  proyecto_racha: from(projectViews, (m) => m.ChallengeStreak),
+  proyecto_valor: from(projectViews, (m) => m.ValueLog),
+  proyecto_ideas: from(projectViews, (m) => m.Ideas),
+  proyecto_referencias: from(projectViews, (m) => m.References),
+  proyecto_recursos: from(projectViews, (m) => m.Resources),
+  proyecto_presupuesto: from(projectViews, (m) => m.ProjectBudget),
+  proyecto_notas: from(projectNotes, (m) => m.ProjectNotesBlock),
+  grafico_avance: from(projectCharts, (m) => m.ProgressChart),
+  grafico_tareas_semana: from(projectCharts, (m) => m.TasksPerWeekChart),
+  grafico_horas: from(projectCharts, (m) => m.HoursChart),
+  grafico_evolucion: from(projectCharts, (m) => m.EvolutionChart),
+  grafico_proyectos: from(projectCharts, (m) => m.ProjectsDonut),
 
   habitos_hoy: from(habits, (m) => m.HabitsToday),
   habitos_semana: from(habits, (m) => m.HabitWeek),

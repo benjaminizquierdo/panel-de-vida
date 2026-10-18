@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { User, UserTab } from './types';
+import type { Project, User, UserTab } from './types';
 import { monthKey, today } from './utils';
 
 // Lo que los bloques necesitan saber de fuera de sí mismos.
@@ -13,9 +13,20 @@ export interface Nav {
   go: (pageId: string) => void;
   /** Página de una categoría por defecto (p. ej. 'finanzas_categorias'), si el usuario la conserva. */
   pageOf: (template: string) => UserTab | undefined;
+  /** Abre la página de un proyecto (la crea con la plantilla de su tipo la primera vez). */
+  openProject: (project: Pick<Project, 'id' | 'name' | 'kind'>) => void;
+  /** Página del menú a la que vuelve «←» desde la página de un proyecto. */
+  returnTo: UserTab | undefined;
 }
 
-export const NavContext = createContext<Nav>({ pages: [], current: undefined, go: () => {}, pageOf: () => undefined });
+export const NavContext = createContext<Nav>({
+  pages: [],
+  current: undefined,
+  go: () => {},
+  pageOf: () => undefined,
+  openProject: () => {},
+  returnTo: undefined,
+});
 export const useNav = () => useContext(NavContext);
 
 /**

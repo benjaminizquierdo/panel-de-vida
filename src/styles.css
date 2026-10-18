@@ -55,10 +55,26 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  background: var(--bg);
+}
+
+/* Con ratón (barras de desplazamiento que ocupan sitio), se reserva siempre su hueco: si la barra
+   aparece y desaparece, el ancho de la página cambia, los bloques se recolocan, cambia el alto…
+   y la página entra en bucle (tiembla). En el móvil las barras no ocupan sitio. */
+@media (pointer: fine) {
+  html {
+    scrollbar-gutter: stable;
+  }
+}
+
+/* Con una hoja abierta, el hueco de la barra se oscurece como el resto de la página. */
+html.has-sheet {
+  background: color-mix(in srgb, var(--bg) 58%, #000);
 }
 
 body {
   margin: 0;
+  min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font: 15px/1.5 var(--font);
@@ -617,6 +633,9 @@ select.sm {
 .chart {
   width: 100%;
   min-width: 0;
+  /* El tooltip de recharts puede asomar por el borde: sin esto, el bloque saca una barra de
+     desplazamiento, el gráfico se encoge, el tooltip se mueve, la barra desaparece… y tiembla. */
+  overflow: hidden;
 }
 
 /* ---------- Listas ---------- */
@@ -707,66 +726,6 @@ select.sm {
 }
 
 /* ---------- Proyectos ---------- */
-
-.filter-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.filter {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.45rem 0.6rem;
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  text-align: left;
-}
-
-.filter:hover {
-  background: var(--surface-2);
-}
-
-.filter[aria-pressed='true'] {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.project-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.project {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.7rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-.project.selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.project-name {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0;
-  background: none;
-  border: 0;
-  font-weight: 600;
-  text-align: left;
-}
 
 .swatches {
   display: flex;
@@ -3118,5 +3077,954 @@ select.sm {
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* ---------- Tipos de proyecto ---------- */
+
+.stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.center-text {
+  text-align: center;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* Elegir el tipo al crear un proyecto */
+.kind-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kind-choice {
+  --kind: var(--accent);
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  width: 100%;
+  height: 100%;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+}
+
+.kind-choice:hover,
+.kind-choice:focus-visible {
+  border-color: var(--kind);
+  background: color-mix(in srgb, var(--kind) 8%, var(--surface));
+}
+
+.kind-icon,
+.project-icon {
+  --kind: var(--accent);
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  background: color-mix(in srgb, var(--kind) 18%, transparent);
+  border-radius: 10px;
+  font-size: 1.15rem;
+}
+
+.kind-choice .kind-icon {
+  background: color-mix(in srgb, var(--kind) 18%, transparent);
+}
+
+.kind-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+/* Cabecera de la página de un proyecto */
+.project-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.9rem;
+}
+
+.kind-badge {
+  --kind: var(--accent);
+  background: color-mix(in srgb, var(--kind) 16%, transparent);
+  color: color-mix(in srgb, var(--kind) 75%, var(--text));
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.78rem;
+}
+
+.project-meta-progress {
+  display: flex;
+  flex: 1 1 200px;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 360px;
+}
+
+.project-meta-progress .progress {
+  flex: 1;
+}
+
+.project-meta-progress .small {
+  white-space: nowrap;
+}
+
+.project-tabs .subtab[aria-selected='true'] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: var(--accent);
+}
+
+/* Semáforo */
+.health {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.health-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.health-verde {
+  color: var(--ok);
+}
+
+.health-amarillo {
+  color: var(--warn);
+}
+
+.health-rojo {
+  color: var(--danger);
+}
+
+.health-gris {
+  color: var(--muted);
+}
+
+.health-verde .health-dot,
+.health-amarillo .health-dot,
+.health-rojo .health-dot,
+.health-gris .health-dot {
+  background: currentColor;
+}
+
+/* Filtros y tarjetas de proyectos */
+.project-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+
+.filter-chip {
+  flex: none;
+  padding: 0.3rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.filter-chip[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: var(--accent);
+}
+
+.project-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-card {
+  --kind: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--kind);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+}
+
+.project-card:hover,
+.project-card:focus-visible {
+  border-color: color-mix(in srgb, var(--kind) 55%, var(--border));
+  border-top-color: var(--kind);
+  background: color-mix(in srgb, var(--kind) 5%, var(--surface));
+}
+
+.project-card .project-icon {
+  --kind: inherit;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.05rem;
+}
+
+.project-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.project-card-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-card-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-card .progress {
+  flex: none;
+}
+
+.project-card .progress > span,
+.project-summary .progress:not(.ok) > span {
+  background: var(--kind);
+}
+
+.project-filters .segmented .count {
+  margin-left: 0.25rem;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.donut-legend.is-inline {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+
+.project-next {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-card .project-next {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.project-label {
+  margin: 0;
+}
+
+.project-link {
+  text-align: left;
+}
+
+/* Foco de hoy */
+.focus {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.focus-main {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+}
+
+.focus-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  padding: 0;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  color: transparent;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.focus-check:hover,
+.focus-check:focus-visible {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.focus-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.focus-title {
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+
+.focus-next {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tag-btn {
+  border: 0;
+  cursor: pointer;
+}
+
+/* Tablero de un solo proyecto: sin el selector de proyecto */
+.task-form.is-fixed-project {
+  grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(120px, 1fr)) auto;
+}
+
+/* Resumen */
+.project-summary {
+  --kind: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.project-summary-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.project-summary-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.project-summary-progress .progress {
+  flex: none;
+}
+
+.project-summary-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.6rem 1rem;
+  margin: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Fases */
+.phases {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.phases li {
+  flex: 1;
+  min-width: 0;
+}
+
+.phases button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.55rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.phases button:hover {
+  border-color: var(--border);
+}
+
+.phase-dot {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  background: var(--surface);
+  border-radius: 50%;
+  font-size: 0.75rem;
+}
+
+.phases .is-done button {
+  color: var(--ok);
+}
+
+.phases .is-done .phase-dot {
+  background: var(--ok-soft);
+}
+
+.phases .is-current button {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: var(--accent);
+}
+
+.phases .is-current .phase-dot {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Cuenta atrás del proyecto */
+.countdown-big {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  text-align: center;
+}
+
+.countdown-big .project-label {
+  align-self: stretch;
+  text-align: left;
+}
+
+.countdown-number {
+  color: var(--accent);
+  font-size: 2.8rem;
+  line-height: 1.1;
+}
+
+.countdown-number.tone-warn {
+  color: var(--warn);
+}
+
+/* Checklist de tareas */
+.check-tasks:empty {
+  display: none;
+}
+
+/* Notas y adjuntos */
+.project-notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.note-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-drop {
+  position: relative;
+  justify-content: center;
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.file-drop.is-busy {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.file-drop:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Temario */
+.syllabus {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.module details {
+  display: flex;
+  flex-direction: column;
+}
+
+.module details > * + * {
+  margin-top: 0.5rem;
+}
+
+.module summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.module-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.module-pct {
+  flex: none;
+  color: var(--muted);
+}
+
+.module .progress {
+  flex: none;
+}
+
+.module .inline-form {
+  margin-top: 0;
+}
+
+/* Racha de un reto */
+.streak-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.streak-main .chain-stats {
+  flex: 1 1 260px;
+}
+
+.streak-btn {
+  flex: none;
+  min-width: 9rem;
+  padding: 0.8rem 1.2rem;
+  background: var(--accent);
+  border: 0;
+  border-radius: 999px;
+  color: var(--accent-text);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.streak-btn.is-done {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+/* Valores medidos */
+.value-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+/* Ideas */
+.idea-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.idea {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.idea-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Galería de referencias */
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ref-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.ref-open {
+  display: block;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.ref-open img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ref-placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 1.8rem;
+}
+
+.ref-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.ref-caption .small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Recursos */
+.resource-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resource {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.resource.status-en_curso {
+  border-left-color: var(--accent);
+}
+
+.resource.status-hecho {
+  border-left-color: var(--ok);
+}
+
+.resource.status-hecho .resource-title {
+  color: var(--muted);
+}
+
+.resource-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.resource-title {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Gráficos de proyectos */
+.chart-block {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-height: 0;
+}
+
+.chart-caption {
+  margin: 0;
+}
+
+@container (max-width: 520px) {
+  .project-summary-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .phases {
+    flex-direction: column;
+  }
+
+  .phases button {
+    justify-content: flex-start;
+  }
+
+  .task-form.is-fixed-project {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .focus-main {
+    flex-wrap: wrap;
+  }
+
+  .focus-main > .btn {
+    margin-left: 3.45rem;
+  }
+
+  .project-filters .segmented {
+    width: 100%;
+  }
+
+  /* En el móvil los tipos se desplazan en una fila en lugar de ocupar varias. */
+  .filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .project-filters .segmented button {
+    flex: 1;
+    padding-inline: 0.3rem;
+  }
+}
+
+/* ---------- Ficha de una tarea ---------- */
+
+.sheet.is-wide {
+  width: min(980px, 100%);
+  max-height: min(880px, calc(100dvh - 32px));
+}
+
+.task-sheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-areas:
+    'main side'
+    'attachments side';
+  gap: 1.25rem 1.5rem;
+  align-items: start;
+}
+
+.task-sheet-main {
+  grid-area: main;
+}
+
+.task-sheet-side {
+  grid-area: side;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.task-sheet-attachments {
+  grid-area: attachments;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.task-sheet-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.task-sheet-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.task-time {
+  gap: 0.45rem;
+}
+
+.task-time .progress {
+  flex: none;
+}
+
+.project-notes.is-compact {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+/* Tarjeta del kanban: se abre al pulsarla; el borde izquierdo es del color de su tipo. */
+.task {
+  --kind: var(--border);
+  border-left: 3px solid var(--kind);
+}
+
+.task-open {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-open:hover .task-title,
+.task-open:focus-visible .task-title {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.task-kind {
+  color: color-mix(in srgb, var(--kind) 75%, var(--text));
+  font-weight: 600;
+}
+
+.task-chip {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.column-time {
+  float: right;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.focus-title.link-btn {
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+@media (max-width: 720px) {
+  .task-sheet {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'main'
+      'side'
+      'attachments';
+  }
+
+  .task-sheet-side {
+    position: static;
   }
 }

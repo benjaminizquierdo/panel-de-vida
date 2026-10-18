@@ -4,6 +4,7 @@ import { categoryOptions } from '../lib/categories';
 import { useTable } from '../lib/useTable';
 import { COLS } from '../lib/layout';
 import { pageTree, subtree, type PageNode } from '../lib/pages';
+import { kindOf } from '../lib/projectKinds';
 import type { Restorable } from '../lib/pageTemplates';
 import { toast } from '../lib/toast';
 import type { Block, UserTab } from '../lib/types';
@@ -294,7 +295,10 @@ function FilterField({ filter, value, onChange }: { filter: BlockFilter; value: 
 
   const options =
     filter.source === 'project'
-      ? projects.rows.map((p) => ({ id: p.id, label: p.name }))
+      ? // Primero los proyectos de los tipos para los que está pensado el bloque.
+        [...projects.rows]
+          .sort((a, b) => Number(!filter.projectKinds?.includes(a.kind)) - Number(!filter.projectKinds?.includes(b.kind)))
+          .map((p) => ({ id: p.id, label: `${kindOf(p).icon} ${p.name}${p.status === 'activo' ? '' : ' (no activo)'}` }))
       : filter.source === 'expense_category'
         ? categoryOptions(categories.rows, 'gasto')
         : filter.source === 'habit'
@@ -305,7 +309,9 @@ function FilterField({ filter, value, onChange }: { filter: BlockFilter; value: 
     <label className="field">
       <span>{filter.label}</span>
       <select value={current} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{filter.allLabel ?? (options.length ? 'El primero de la lista' : 'No hay ninguno todavía')}</option>
+        <option value="">
+          {filter.allLabel ?? (options.length === 0 ? 'No hay ninguno todavía' : filter.source === 'project' ? 'El primero activo de su tipo' : 'El primero de la lista')}
+        </option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}

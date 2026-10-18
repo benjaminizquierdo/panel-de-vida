@@ -20,6 +20,8 @@ export interface PageSeed {
   name: string;
   icon: string;
   template?: string;
+  /** Página de un proyecto (ver lib/projectKinds.ts). */
+  project_id?: string;
   blocks: BlockSeed[];
   children?: PageSeed[];
 }
@@ -28,7 +30,7 @@ export interface PageSeed {
  * Bloque en la columna `x` con ancho `w` y el alto inicial de su tipo. `row` solo indica el orden:
  * layout() lo convierte en la posición real apilando los bloques sin huecos.
  */
-const b = (type: string, x: number, row: number, w: number, extra: Partial<Pick<BlockSeed, 'title' | 'content'>> = {}): BlockSeed => {
+export const b = (type: string, x: number, row: number, w: number, extra: Partial<Pick<BlockSeed, 'title' | 'content'>> = {}): BlockSeed => {
   const kind = blockKind(type);
   return {
     type,
@@ -42,7 +44,7 @@ const b = (type: string, x: number, row: number, w: number, extra: Partial<Pick<
   };
 };
 
-const layout = (blocks: BlockSeed[]): BlockSeed[] => {
+export const layout = (blocks: BlockSeed[]): BlockSeed[] => {
   const placed = compact(blocks.map((block, i) => ({ ...block, id: String(i).padStart(3, '0') })));
   return placed.sort((a, c) => a.id.localeCompare(c.id)).map(({ id: _id, ...block }) => block);
 };
@@ -69,7 +71,12 @@ export const DEFAULT_PAGES: PageSeed[] = [
     template: 'proyectos',
     name: 'Proyectos',
     icon: '📋',
-    blocks: layout([b('proyectos', 0, 0, 4), b('tablero', 4, 0, 8)]),
+    blocks: layout([
+      b('foco_hoy', 0, 0, 12, { title: '🎯 Foco de hoy' }),
+      b('proyectos', 0, 1, 12),
+      b('grafico_tareas_semana', 0, 2, 6),
+      b('grafico_proyectos', 6, 2, 6),
+    ]),
   },
   {
     template: 'habitos',

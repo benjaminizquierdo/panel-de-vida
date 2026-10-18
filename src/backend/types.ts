@@ -6,6 +6,11 @@ import type { AssistantRequest, AssistantResponse, NewRow, Row, TableName, User 
  * al usuario con sesión iniciada: en Supabase lo garantiza Row Level Security,
  * en modo demo cada usuario tiene sus propias claves en localStorage.
  */
+/** Tamaño máximo de un adjunto: 10 MB en Supabase (límite del bucket en 008_tipos_proyecto.sql). */
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/** En modo demo los archivos se guardan en el navegador, que tiene muy poco sitio. */
+export const MAX_DEMO_FILE_BYTES = 1024 * 1024;
+
 export interface Backend {
   mode: 'local' | 'supabase';
   getUser(): Promise<User | null>;
@@ -33,6 +38,12 @@ export interface Backend {
   seedPages(pages: PageSeed[]): Promise<number>;
   /** Crea páginas con sus bloques y subpáginas bajo `parentId` (null: primer nivel), todo o nada. */
   insertPages(pages: PageSeed[], parentId: string | null): Promise<number>;
+  /** Sube un archivo adjunto a `path` (<user_id>/<project_id>/<nombre>). Como mucho MAX_FILE_BYTES. */
+  uploadFile(path: string, file: File): Promise<void>;
+  /** Dirección temporal para ver o descargar un adjunto. */
+  fileUrl(path: string): Promise<string>;
+  /** Borra adjuntos (los que no existan se ignoran). */
+  removeFiles(paths: string[]): Promise<void>;
   /** Asistente de IA. Solo existe con Supabase (necesita la Edge Function). Lanza AssistantError. */
   assistant?(request: AssistantRequest): Promise<AssistantResponse>;
 }

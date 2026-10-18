@@ -4,6 +4,7 @@
 
 import type Anthropic from '@anthropic-ai/sdk';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { PROJECT_KIND_IDS } from './projectKinds.ts';
 
 export interface ToolContext {
   db: SupabaseClient;
@@ -43,7 +44,7 @@ const QUERYABLE = {
   habitos_cumplidos: { table: 'habit_logs', columns: 'habit_id, date', dateColumn: 'date' },
   salud: { table: 'health_logs', columns: 'date, sleep_hours, energy, exercise_minutes, weight, notes', dateColumn: 'date' },
   tareas: { table: 'tasks', columns: 'id, title, status, priority, due_date, project_id', dateColumn: 'due_date' },
-  proyectos: { table: 'projects', columns: 'id, name, description, status', dateColumn: null },
+  proyectos: { table: 'projects', columns: 'id, name, description, status, kind, fields', dateColumn: null },
   objetivos: { table: 'goals', columns: 'id, title, horizon, area, current, target, unit, due_date', dateColumn: null },
   presupuestos: { table: 'budgets', columns: 'category_id, monthly_limit', dateColumn: null },
   destacados: { table: 'highlights', columns: 'date, text, done', dateColumn: 'date' },
@@ -142,11 +143,13 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: 'crear_proyecto',
-    description: 'Crea un proyecto nuevo (activo).',
+    description:
+      'Crea un proyecto nuevo (activo) de un tipo: profesional (trabajo para un cliente), estudios (curso o certificación), reto (hábito con racha), creativo, salud (objetivo medible: kg, km…), hogar (lista de tareas), aprendizaje (libros, idiomas), viaje (o evento) o general. Sus datos propios (cliente, fechas, presupuesto…) los rellena el usuario en la app.',
     strict: true,
     input_schema: object({
       nombre: str('Nombre del proyecto'),
       descripcion: str('Descripción breve; cadena vacía si no hay'),
+      tipo: oneOf(PROJECT_KIND_IDS, 'Tipo de proyecto; «general» si no encaja en ninguno'),
     }),
   },
   {
@@ -438,7 +441,11 @@ const handlers: Record<string, (input: Input, ctx: ToolContext) => Promise<unkno
     const id = createdId(
       await ctx.db
         .from('projects')
-        .insert({ name, description: typeof input.descripcion === 'string' ? input.descripcion.trim() : '' })
+        .insert({
+          name,
+          description: typeof input.descripcion === 'string' ? input.descripcion.trim() : '',
+          kind: PROJECT_KIND_IDS.includes(input.tipo as string) ? input.tipo : 'general',
+        })
         .select('id')
         .single(),
     );
