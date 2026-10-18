@@ -147,6 +147,33 @@ Cada proyecto es de un **tipo**, con su icono, color, campos propios y una vista
 
 Los tipos se definen solo con configuración en `PROJECT_KINDS` (`src/lib/projectKinds.ts`); los cálculos de progreso, semáforo, foco y rachas están en `src/lib/projects.ts` (probados en `tests/projects.test.ts`). Datos: `projects.kind` y `projects.fields`, `project_items` (módulos, temas, recursos, ideas, referencias, notas, enlaces y archivos), `project_logs` (horas, valores y días cumplidos), `transactions.project_id` y `tabs.project_id`, migración 008.
 
+## Cuerpo y nutrición
+
+Página **Nutrición** (dentro de Hábitos y salud) y bloques del grupo «Cuerpo y nutrición» del catálogo:
+
+| Bloque | Qué hace |
+|---|---|
+| 🥗 Macros de hoy | Anillo de kcal y barras de proteína, hidratos y grasa frente a tus objetivos, lo que te queda y lo que te ha costado la comida del día |
+| 🍽️ Diario de comidas | Desayuno, comida, merienda, cena y otros, día a día. Añade de tus alimentos, buscando en Open Food Facts, **escaneando el código de barras** con la cámara o a mano; «Repetir ayer» |
+| 🛒 Buscador de productos | Productos de supermercados de España con sus macros por 100 g; guárdalos con **tu precio** (se recuerda) y tu tienda |
+| 🧺 Mis alimentos | Tu catálogo: macros por 100 g, precio por kilo y favoritos |
+| ⚖️ Peso | Apunta tu peso; media de 7 días, **cuánto te falta** para tu objetivo, a qué ritmo vas (kg/semana) y **cuándo llegarías** |
+| 📉 Evolución del peso | Gráfico de pesos y media de 7 días con la línea del objetivo |
+| 📊 Kcal y proteína · 14 días | Kcal de cada día frente al objetivo y la proteína |
+| 💧 Agua de hoy | Un toque por vaso |
+| 👟 Pasos y kcal quemadas | De momento a mano; con la app de Android los traerá Health Connect |
+
+- **Objetivos** (🎯 en los bloques): kcal, macros (con «Repartir 30/40/30»), agua, pasos y peso objetivo con fecha opcional.
+- **Precios**: los pones tú la primera vez (precio y peso del envase) y la app calcula lo que cuesta cada ración. Sin depender de servicios de pago ni de accesos no oficiales a supermercados.
+- **Open Food Facts** es una base de datos abierta y gratuita (licencia ODbL). Por código de barras se consulta directamente desde el navegador. Su buscador por nombre no admite peticiones desde otras webs, así que la app lo consulta a través de la Edge Function **`food-search`** (gratis, sin clave). Despliégala una vez:
+  ```bash
+  npx supabase functions deploy food-search --project-ref <tu-project-ref> --no-verify-jwt --use-api
+  ```
+  Sin ella, el escáner, el código de barras y los alimentos a mano funcionan igual. En el modo demo no hay buscador por nombre.
+- **Escáner**: usa el lector de códigos del navegador si lo tiene (Chrome en Android) y, si no, [ZXing](https://github.com/zxing-js/library) (licencia Apache-2.0), que solo se descarga al abrir la cámara. La cámara exige una dirección segura (https, o `localhost`).
+
+Datos: `nutrition_goals`, `foods` (valores por 100 g, precio por envase), `food_logs` (cada entrada guarda sus valores: cambiar o borrar un alimento no cambia lo que ya comiste) y `water_ml`, `steps` y `active_kcal` en `health_logs`, migración 010. Cálculos en `src/lib/nutrition.ts` (probados en `tests/nutrition.test.ts`). Las cuentas que ya existían pueden añadir la página desde **↺ Recuperar categorías por defecto** en el menú lateral.
+
 ## Activar el asistente de IA
 
 El asistente es una [Edge Function](https://supabase.com/docs/guides/functions) de Supabase (`supabase/functions/assistant`) que llama a la API de Claude con herramientas para registrar y consultar datos. Puede **añadir y modificar**, nunca borrar, y cada usuario tiene un **límite diario de mensajes** (30 por defecto) para acotar el coste. Sin esto configurado, la app funciona igual y el chat avisa de que no está disponible.
@@ -227,10 +254,13 @@ supabase/
     007_disenador.sql   Árbol de páginas sin límite, posición y tamaño de los bloques, categorías por defecto
     008_tipos_proyecto.sql Tipos de proyecto, temario/recursos/notas, registros, gastos por proyecto y adjuntos
     009_detalle_tareas.sql Ficha de cada tarea: tipo, descripción, estimación, horas y sus notas, enlaces y documentos
+    010_nutricion.sql   Objetivos de nutrición, alimentos con precio, diario de comidas; agua, pasos y kcal quemadas
   functions/assistant/
     index.ts      Servidor: sesión, cupo, bucle de herramientas con Claude
     tools.ts      Herramientas (registrar gastos, periódicos, hábitos, salud, tareas, objetivos; consultar)
     prompt.ts     Prompt de sistema y contexto de cada turno
+  functions/food-search/
+    index.ts      Buscador de productos de Open Food Facts por nombre (para la app)
 scripts/
   panel.mjs       Línea de comandos para leer/escribir datos
 tests/
@@ -245,6 +275,7 @@ tests/
   insights.test.ts   Test de correlaciones, puntuación del día, rachas, próximos cargos y ritmo de gasto
   projects.test.ts   Test de los tipos de proyecto: campos, plantillas, progreso, semáforo, foco y rachas
   tasks.test.ts      Test de los tipos de tarea y de su tiempo (estimado, dedicado y restante)
+  nutrition.test.ts  Test de raciones, precios, totales, tendencia del peso y lectura de Open Food Facts
 ```
 
 ## Personalizar

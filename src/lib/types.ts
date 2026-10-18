@@ -107,6 +107,60 @@ export interface HealthLog extends Base {
   exercise_minutes: number | null;
   weight: number | null;
   notes: string;
+  /** Agua bebida, pasos y kcal quemadas en actividad (010_nutricion.sql). */
+  water_ml?: number | null;
+  steps?: number | null;
+  active_kcal?: number | null;
+}
+
+/** Objetivos diarios de nutrición y actividad, y peso objetivo (una fila por usuario). */
+export interface NutritionGoals extends Base {
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  water_ml: number;
+  steps: number;
+  weight_target: number | null;
+  weight_target_date: string | null;
+}
+
+/** Alimento del catálogo del usuario. Valores por 100 g; el precio es el de un envase de `price_grams` g. */
+export interface Food extends Base {
+  name: string;
+  brand: string;
+  barcode: string | null;
+  /** 'manual' o 'off' (Open Food Facts). */
+  source: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number | null;
+  sugars: number | null;
+  salt: number | null;
+  serving_g: number | null;
+  price: number | null;
+  price_grams: number | null;
+  store: string;
+  image_url: string | null;
+  favorite: boolean;
+}
+
+export type Meal = 'desayuno' | 'comida' | 'merienda' | 'cena' | 'otros';
+
+/** Lo que se comió: nombre y valores calculados al apuntarlo. */
+export interface FoodLog extends Base {
+  date: string;
+  meal: Meal;
+  food_id: string | null;
+  name: string;
+  grams: number;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  cost: number | null;
 }
 
 export interface Goal extends Base {
@@ -235,6 +289,9 @@ export interface Tables {
   habits: Habit;
   habit_logs: HabitLog;
   health_logs: HealthLog;
+  nutrition_goals: NutritionGoals;
+  foods: Food;
+  food_logs: FoodLog;
   goals: Goal;
   reviews: Review;
   transactions: Transaction;

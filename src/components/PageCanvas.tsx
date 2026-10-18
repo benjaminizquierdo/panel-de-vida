@@ -1,8 +1,8 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactGridLayout, { useContainerWidth, verticalCompactor, type Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import { blockKind, hasFixedHeight } from '../lib/blockKinds';
-import { changes, readingOrder, type Rect } from '../lib/layout';
+import { changes, createHeightTracker, readingOrder, type Rect } from '../lib/layout';
 import type { Block } from '../lib/types';
 
 /** Alto de una fila de la rejilla y separación entre bloques, en píxeles. */
@@ -64,10 +64,13 @@ function Grid({ blocks, editing, renderBlock, onLayout, onDropKind }: {
   const { width, containerRef, mounted } = useContainerWidth();
   // Filas que ocupa el contenido de cada bloque de alto automático.
   const [natural, setNatural] = useState<Record<string, number>>({});
+  const tracker = useRef(createHeightTracker(rowsFor));
+  // Con otro ancho los altos cambian de verdad: se quitan los seguros contra bucles.
+  useEffect(() => tracker.current.setWidth(width), [width]);
   const measure = useCallback(
     (id: string) => (px: number) => {
-      const rows = rowsFor(px);
-      setNatural((prev) => (prev[id] === rows ? prev : { ...prev, [id]: rows }));
+      const rows = tracker.current.measure(id, px);
+      if (rows !== null) setNatural((prev) => (prev[id] === rows ? prev : { ...prev, [id]: rows }));
     },
     [],
   );

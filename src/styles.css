@@ -58,13 +58,11 @@ html {
   background: var(--bg);
 }
 
-/* Con ratón (barras de desplazamiento que ocupan sitio), se reserva siempre su hueco: si la barra
-   aparece y desaparece, el ancho de la página cambia, los bloques se recolocan, cambia el alto…
-   y la página entra en bucle (tiembla). En el móvil las barras no ocupan sitio. */
-@media (pointer: fine) {
-  html {
-    scrollbar-gutter: stable;
-  }
+/* Se reserva siempre el hueco de la barra de desplazamiento: si la barra aparece y desaparece, el
+   ancho de la página cambia, los bloques se recolocan, cambia el alto… y la página entra en bucle
+   (tiembla). Con las barras que no ocupan sitio (móviles, macOS) no tiene ningún efecto. */
+html {
+  scrollbar-gutter: stable;
 }
 
 /* Con una hoja abierta, el hueco de la barra se oscurece como el resto de la página. */
@@ -4026,5 +4024,351 @@ select.sm {
 
   .task-sheet-side {
     position: static;
+  }
+}
+
+/* ---------- Cuerpo y nutrición ---------- */
+
+.goal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.6rem;
+}
+
+.macro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+  gap: 0.5rem;
+}
+
+.week-nav {
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+/* Macros de hoy: anillo de kcal y barras de macros */
+.macros-today {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.ring {
+  position: relative;
+  flex: none;
+  width: 132px;
+  height: 132px;
+}
+
+.ring svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ring circle {
+  fill: none;
+  stroke-width: 11;
+}
+
+.ring-track {
+  stroke: var(--surface-2);
+}
+
+.ring-value {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.4s ease;
+}
+
+.ring-value.is-over {
+  stroke: var(--danger);
+}
+
+.ring-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.ring-text strong {
+  font-size: 1.5rem;
+  line-height: 1.1;
+}
+
+.macros-side {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.macros-left {
+  margin: 0;
+  font-weight: 600;
+}
+
+.macro-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.macro-bars .progress {
+  flex: none;
+  margin-top: 0.15rem;
+}
+
+.macro-protein .progress:not(.danger) > span {
+  background: var(--c2);
+}
+
+.macro-carbs .progress:not(.danger) > span {
+  background: var(--c3);
+}
+
+.macro-fat .progress:not(.danger) > span {
+  background: var(--c1);
+}
+
+/* Diario de comidas */
+.diary-total {
+  margin: 0;
+}
+
+.meal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.meal h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.meal-items > li {
+  padding: 0.35rem 0;
+}
+
+.meal-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.meal-add-other {
+  align-self: flex-start;
+}
+
+/* Agua */
+.glasses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  font-size: 1.15rem;
+}
+
+.glass {
+  filter: grayscale(1);
+  opacity: 0.3;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.glass.is-full {
+  filter: none;
+  opacity: 1;
+}
+
+/* Pasos de la semana */
+.mini-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  height: 64px;
+}
+
+.mini-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+}
+
+.mini-bar > span:first-child {
+  width: 100%;
+  max-width: 22px;
+  background: var(--accent);
+  border-radius: 4px 4px 2px 2px;
+  opacity: 0.55;
+}
+
+.mini-bar > span.is-ok {
+  background: var(--ok);
+  opacity: 1;
+}
+
+/* Peso */
+.weight-main {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Alimentos */
+.food-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.food-row {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+}
+
+.food-row:hover,
+.food-row:focus-visible {
+  border-color: var(--accent);
+}
+
+.food-row.has-img {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.food-row img,
+.food-img-empty {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.food-img-empty {
+  background: var(--surface-2);
+}
+
+.food-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.food-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.food-catalog > li {
+  gap: 0.4rem;
+}
+
+.food-catalog .food-row {
+  padding: 0.3rem 0.5rem;
+  border-color: transparent;
+}
+
+.food-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.food-head img,
+.food-sheet-img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: var(--radius-sm);
+}
+
+.portion-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+}
+
+.portion-preview strong {
+  font-size: 1.2rem;
+}
+
+/* Escáner de códigos de barras */
+.scanner {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: var(--radius-sm);
+}
+
+.scanner video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scanner-frame {
+  position: absolute;
+  inset: 30% 12%;
+  border: 3px solid rgb(255 255 255 / 0.85);
+  border-radius: 10px;
+  box-shadow: 0 0 0 999px rgb(0 0 0 / 0.35);
+}
+
+.scanner-hint {
+  position: absolute;
+  right: 0;
+  bottom: 0.6rem;
+  left: 0;
+  margin: 0;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 1px 3px #000;
+}
+
+@media (max-width: 520px) {
+  .meal-label {
+    display: none;
+  }
+
+  .ring {
+    width: 116px;
+    height: 116px;
   }
 }

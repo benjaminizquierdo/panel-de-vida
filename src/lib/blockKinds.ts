@@ -3,13 +3,14 @@
 // componente en src/blocks/index.tsx. La base de datos no limita los tipos: un tipo que esta
 // versión no conoce se muestra como aviso en lugar de romper la página.
 
-export type BlockGroup = 'basicos' | 'inicio' | 'proyectos' | 'habitos' | 'objetivos' | 'finanzas';
+export type BlockGroup = 'basicos' | 'inicio' | 'proyectos' | 'habitos' | 'nutricion' | 'objetivos' | 'finanzas';
 
 export const BLOCK_GROUPS: { id: BlockGroup; label: string; hint: string }[] = [
   { id: 'basicos', label: 'Básicos', hint: 'Para montar cualquier página a tu manera' },
   { id: 'inicio', label: 'Tu día', hint: 'Lo de hoy y el tiempo que pasa, juntando toda la app' },
   { id: 'proyectos', label: 'Proyectos y tareas', hint: '' },
   { id: 'habitos', label: 'Hábitos y salud', hint: '' },
+  { id: 'nutricion', label: 'Cuerpo y nutrición', hint: 'Comidas, macros, peso, agua y actividad' },
   { id: 'objetivos', label: 'Objetivos', hint: '' },
   { id: 'finanzas', label: 'Finanzas', hint: '' },
 ];
@@ -462,6 +463,17 @@ export const BLOCK_KINDS: BlockKind[] = [
   { type: 'grafico_horas', name: 'Horas por semana', icon: '🕒', description: 'Gráfico de las horas dedicadas cada semana, con el total frente a las estimadas.', group: 'proyectos', w: 6, h: 10, minH: 7, fixedHeight: true, isNew: true, filters: [PROJECT_FILTER] },
   { type: 'grafico_evolucion', name: 'Evolución hacia el objetivo', icon: '📉', description: 'Gráfico de tus valores medidos con la línea del objetivo.', group: 'proyectos', w: 8, h: 11, minH: 7, fixedHeight: true, isNew: true, filters: oneProject('salud') },
   { type: 'grafico_proyectos', name: 'Proyectos por tipo', icon: '🍩', description: 'Gráfico circular de tus proyectos por tipo, y cuántos hay activos, pausados y terminados.', group: 'proyectos', w: 6, h: 13, minH: 9, fixedHeight: true, isNew: true },
+
+  // ------------------------------------------------------------ Nuevos: cuerpo y nutrición
+  { type: 'nut_resumen', name: 'Macros de hoy', icon: '🥗', description: 'Kcal, proteína, hidratos y grasa de hoy frente a tus objetivos, y lo que te queda.', group: 'nutricion', w: 8, h: 8, minW: 4, isNew: true },
+  { type: 'nut_diario', name: 'Diario de comidas', icon: '🍽️', description: 'Lo que comes en cada comida: busca, escanea el código de barras o elige de tus alimentos.', group: 'nutricion', w: 8, h: 18, minW: 4, isNew: true },
+  { type: 'nut_buscador', name: 'Buscador de productos', icon: '🛒', description: 'Productos de supermercado con sus macros (Open Food Facts); guárdalos con tu precio.', group: 'nutricion', w: 6, h: 14, minW: 4, isNew: true },
+  { type: 'nut_alimentos', name: 'Mis alimentos', icon: '🧺', description: 'Tu catálogo de alimentos con macros por 100 g, precio por kilo y favoritos.', group: 'nutricion', w: 6, h: 14, minW: 4, isNew: true },
+  { type: 'peso', name: 'Peso', icon: '⚖️', description: 'Apunta tu peso y mira cuánto te falta para tu objetivo, a qué ritmo vas y cuándo llegarías.', group: 'nutricion', w: 4, h: 10, isNew: true },
+  { type: 'grafico_peso', name: 'Evolución del peso', icon: '📉', description: 'Gráfico de tu peso y su media de 7 días, con la línea del objetivo.', group: 'nutricion', w: 8, h: 12, minH: 8, fixedHeight: true, isNew: true },
+  { type: 'grafico_macros', name: 'Kcal y proteína · 14 días', icon: '📊', description: 'Tus kcal de cada día frente al objetivo, y la proteína.', group: 'nutricion', w: 6, h: 11, minH: 8, fixedHeight: true, isNew: true },
+  { type: 'agua', name: 'Agua de hoy', icon: '💧', description: 'Cuenta los vasos de agua con un toque.', group: 'nutricion', w: 4, h: 7, isNew: true },
+  { type: 'actividad', name: 'Pasos y kcal quemadas', icon: '👟', description: 'Pasos y kcal quemadas de hoy y de la semana (a mano; con la app de Android, desde Health Connect).', group: 'nutricion', w: 4, h: 10, isNew: true },
 ];
 
 export const blockKind = (type: string) => BLOCK_KINDS.find((k) => k.type === type);

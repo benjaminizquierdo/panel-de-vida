@@ -5,6 +5,7 @@ import { subtree } from '../lib/pages';
 import { dueDates } from '../lib/recurring';
 import type { Block, FinanceCategory, Row, TableName, TxType, User, UserTab } from '../lib/types';
 import { addDays, today } from '../lib/utils';
+import { searchUrl } from '../../supabase/functions/food-search/search';
 import { MAX_DEMO_FILE_BYTES, type Backend } from './types';
 
 // Modo demo: cuentas y datos en localStorage de este navegador. Sirve para probar
@@ -50,6 +51,8 @@ const CASCADE: Partial<Record<TableName, [TableName, string][]>> = {
 /** Igual que los `on delete set null`: el gasto de un proyecto borrado se queda en Finanzas. */
 const SET_NULL: Partial<Record<TableName, [TableName, string][]>> = {
   projects: [['transactions', 'project_id']],
+  // Borrar un alimento no borra lo que ya comiste.
+  foods: [['food_logs', 'food_id']],
 };
 
 /** Tablas cuyos cambios cuentan como actividad de su proyecto (trigger touch_project() de la 008). */
@@ -203,6 +206,21 @@ export function createLocalBackend(): Backend {
     if (!rows('tasks').some((t) => t.id === field(row, 'task_id'))) throw new Error('La tarea no existe');
     const url = field(row, 'url');
     if (url !== null && url !== undefined && !/^https?:\/\//.test(String(url))) throw new Error('Los enlaces tienen que empezar por http:// o https://');
+  };
+
+  /** Lo que comprueban las restricciones de nutrition_goals y foods en la 010. */
+  const checkNutrition = (table: TableName, row: unknown, all: unknown[]) => {
+    const others = all.filter((r) => field(r, 'id') !== field(row, 'id'));
+    if (table === 'nutrition_goals' && others.length > 0) throw new Error('Ya tienes tus objetivos guardados');
+    if (table === 'foods') {
+      const name = String(field(row, 'name') ?? '').trim();
+      if (name.length < 1 || name.length > 200) throw new Error('El alimento necesita un nombre');
+      const barcode = field(row, 'barcode');
+      if (barcode && others.some((r) => field(r, 'barcode') === barcode)) throw new Error('Ese producto ya está en tus alimentos');
+      for (const key of ['protein', 'carbs', 'fat']) if (Number(field(row, key)) > 100) throw new Error('Los macros van por cada 100 g: ninguno puede pasar de 100 g');
+      if (Number(field(row, 'kcal')) > 1000) throw new Error('Ningún alimento tiene más de 1000 kcal por 100 g');
+    }
+    if (table === 'food_logs' && !(Number(field(row, 'grams')) > 0)) throw new Error('Apunta cuántos gramos');
   };
 
   /** Proyecto al que pertenece una fila (el de su tarea, en las notas y adjuntos de una tarea). */
@@ -374,6 +392,7 @@ export function createLocalBackend(): Backend {
       if (table === 'blocks') checkBlock(created as Block, rows('tabs'));
       if (table === 'project_items' || table === 'project_logs') checkProjectRow(table, created, rows(table));
       if (table === 'task_items') checkTaskItem(created);
+      if (table === 'nutrition_goals' || table === 'foods' || table === 'food_logs') checkNutrition(table, created, rows(table));
       if (table === 'tasks') created = withCompletedAt(created);
       if (table === 'projects') created = { kind: 'general', fields: {}, ...created, last_activity_at: new Date().toISOString() } as Row<T>;
       save(table, [...rows(table), created]);
@@ -418,6 +437,7 @@ export function createLocalBackend(): Backend {
       if (table === 'blocks' && updated) checkBlock(updated as Block, rows('tabs'));
       if ((table === 'project_items' || table === 'project_logs') && updated) checkProjectRow(table, updated, next);
       if (table === 'task_items' && updated) checkTaskItem(updated);
+      if ((table === 'nutrition_goals' || table === 'foods' || table === 'food_logs') && updated) checkNutrition(table, updated, next);
       save(table, next);
       if (TOUCHES_PROJECT.has(table)) touchProjects([projectOfRow(table, before), projectOfRow(table, updated)]);
     },
@@ -544,6 +564,18 @@ export function createLocalBackend(): Backend {
     async removeFiles(paths) {
       const me = uid();
       for (const path of paths) if (path.split('/')[0] === me) localStorage.removeItem(fileKey(path));
+    },
+
+    async searchFoods(query) {
+      // Sin servidor se pregunta directamente; el navegador lo bloquea si Open Food Facts no lo permite.
+      try {
+        const res = await fetch(searchUrl(query));
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json();
+        return Array.isArray(data.hits) ? data.hits : [];
+      } catch {
+        throw new Error('En el modo demo el buscador por nombre no está disponible (Open Food Facts no lo permite desde el navegador). Usa el código de barras o crea el alimento a mano.');
+      }
     },
 
     async generateRecurring(until) {

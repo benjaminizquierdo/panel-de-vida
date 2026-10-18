@@ -92,6 +92,24 @@ export const DEFAULT_PAGES: PageSeed[] = [
       b('correlaciones', 0, 5, 6),
       b('anio_pixeles', 0, 6, 12),
     ]),
+    children: [
+      {
+        template: 'habitos_nutricion',
+        name: 'Nutrición',
+        icon: '🥗',
+        blocks: layout([
+          b('nut_resumen', 0, 0, 8),
+          b('agua', 8, 0, 4),
+          b('nut_diario', 0, 1, 8),
+          b('peso', 8, 1, 4),
+          b('actividad', 8, 2, 4),
+          b('grafico_peso', 0, 3, 6),
+          b('grafico_macros', 6, 3, 6),
+          b('nut_buscador', 0, 4, 6),
+          b('nut_alimentos', 6, 4, 6),
+        ]),
+      },
+    ],
   },
   {
     template: 'objetivos',

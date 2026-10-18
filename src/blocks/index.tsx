@@ -24,6 +24,8 @@ const money = () => import('./app/money');
 const projectViews = () => import('./app/projectViews');
 const projectNotes = () => import('./app/projectNotes');
 const projectCharts = () => import('./app/projectCharts');
+const nutrition = () => import('./app/nutrition');
+const foods = () => import('./app/foods');
 
 const from = <M,>(load: () => Promise<M>, pick: (m: M) => ComponentType<BlockProps>) => lazy(() => load().then((m) => ({ default: pick(m) })));
 
@@ -60,6 +62,16 @@ export const BLOCK_COMPONENTS: Record<string, AnyBlock> = {
   grafico_horas: from(projectCharts, (m) => m.HoursChart),
   grafico_evolucion: from(projectCharts, (m) => m.EvolutionChart),
   grafico_proyectos: from(projectCharts, (m) => m.ProjectsDonut),
+
+  nut_resumen: from(nutrition, (m) => m.MacrosToday),
+  nut_diario: from(nutrition, (m) => m.FoodDiary),
+  nut_buscador: from(foods, (m) => m.ProductSearch),
+  nut_alimentos: from(foods, (m) => m.MyFoods),
+  peso: from(nutrition, (m) => m.WeightLog),
+  grafico_peso: from(nutrition, (m) => m.WeightChart),
+  grafico_macros: from(nutrition, (m) => m.MacrosChart),
+  agua: from(nutrition, (m) => m.WaterToday),
+  actividad: from(nutrition, (m) => m.ActivityToday),
 
   habitos_hoy: from(habits, (m) => m.HabitsToday),
   habitos_semana: from(habits, (m) => m.HabitWeek),

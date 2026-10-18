@@ -143,6 +143,20 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
       if (error) fail(storageError(error));
     },
 
+    async searchFoods(query) {
+      const { data, error } = await sb.functions.invoke<{ hits: Record<string, unknown>[] }>('food-search', { body: { q: query } });
+      if (!error && data) return data.hits;
+      let detail = '';
+      if (error instanceof FunctionsHttpError) {
+        try {
+          detail = (await error.context.json()).error ?? '';
+        } catch {
+          // Sin JSON: la función no está desplegada.
+        }
+      }
+      throw new Error(detail || 'El buscador de productos no está disponible: falta desplegar la función «food-search» en Supabase. Mientras, usa el código de barras.');
+    },
+
     async assistant(request) {
       const { data, error } = await sb.functions.invoke<AssistantResponse>('assistant', { body: request });
       if (!error && data) return data;

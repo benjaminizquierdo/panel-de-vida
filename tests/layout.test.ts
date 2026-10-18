@@ -1,7 +1,7 @@
 // Pruebas de la rejilla del panel libre (src/lib/layout.ts).
 // Uso: npm run test:lib
 
-import { bottom, changes, compact, moveInOrder, placeNew, readingOrder, type Rect } from '../src/lib/layout.ts';
+import { bottom, changes, compact, createHeightTracker, moveInOrder, placeNew, readingOrder, type Rect } from '../src/lib/layout.ts';
 
 let failures = 0;
 const ok = (cond: unknown, msg: string) => {
@@ -58,6 +58,40 @@ ok(moveInOrder(blocked, 'd', -1) === null, 'si con esos tamaños no se puede, lo
 
 const diff = changes([r('a', 0, 0, 6, 2), r('b', 6, 0, 6, 2)], [r('a', 0, 0, 6, 2), r('b', 0, 2, 6, 2)]);
 ok(diff.length === 1 && diff[0].id === 'b' && diff[0].y === 2, 'solo se guardan los bloques que cambian');
+
+// ---------------------------------------------------------------- Seguro contra bucles de altura
+
+let clock = 0;
+const toRows = (px: number) => Math.ceil(px / 10);
+const tr = createHeightTracker(toRows, () => clock);
+ok(tr.measure('a', 100) === 10 && tr.measure('a', 100) === null, 'la primera medida fija el alto; repetirla no cambia nada');
+clock = 5000;
+ok(tr.measure('a', 150) === 15 && tr.measure('a', 120) === 12, 'los cambios normales (más contenido, menos contenido) se aplican');
+// Bucle: 15 ↔ 12 cada 50 ms (como una barra de desplazamiento que aparece y desaparece).
+clock = 10000;
+const seen: (number | null)[] = [];
+for (let i = 0; i < 12; i++) {
+  clock += 50;
+  seen.push(tr.measure('b', i % 2 ? 120 : 150));
+}
+const applied = seen.filter((v) => v !== null);
+ok(tr.isLocked('b') && applied.at(-1) === 15 && seen.slice(6).every((v) => v === null), `un bloque que va y viene se queda con el alto mayor y deja de cambiar (${JSON.stringify(seen)})`);
+clock += 50;
+ok(tr.measure('b', 300) === 30, 'aunque esté asegurado, si su contenido crece de verdad, crece');
+ok(tr.measure('b', 120) === null, 'pero no vuelve a encoger hasta que cambia el ancho');
+tr.reset();
+ok(!tr.isLocked('b') && tr.measure('b', 120) === 12, 'al cambiar el ancho del panel se quita el seguro');
+ok(!tr.isLocked('a'), 'los bloques que no van y vienen nunca se aseguran');
+const tw = createHeightTracker(toRows, () => clock);
+tw.setWidth(1000);
+for (let i = 0; i < 6; i++) {
+  clock += 50;
+  tw.setWidth(i % 2 ? 1000 : 985);
+  tw.measure('c', i % 2 ? 120 : 150);
+}
+ok(tw.isLocked('c'), 'los 15 px de una barra de desplazamiento que va y viene no quitan el seguro');
+tw.setWidth(1300);
+ok(!tw.isLocked('c'), 'cambiar el tamaño de la ventana sí');
 
 console.log(failures ? `\n${failures} comprobación(es) fallida(s)` : '\nTodas las comprobaciones pasan');
 Deno.exit(failures ? 1 : 0);

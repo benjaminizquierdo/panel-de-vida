@@ -95,3 +95,60 @@ export function changes(before: Rect[], after: Rect[]): Rect[] {
     })
     .map(({ id, x, y, w, h }) => ({ id, x, y, w, h }));
 }
+
+/** Cambios de alto de un bloque en esta ventana de tiempo que se consideran un bucle. */
+const LOOP_CHANGES = 4;
+const LOOP_WINDOW_MS = 2000;
+const WIDTH_SLACK = 24;
+
+/**
+ * Altos medidos de los bloques automáticos, con un seguro contra los bucles: si un bloque cambia
+ * de alto adelante y atrás sin parar (p. ej. porque al crecer aparece una barra de desplazamiento
+ * que lo estrecha y lo hace encoger, y así otra vez), se queda con el mayor de esos altos. El
+ * seguro se quita al cambiar de verdad el ancho del panel. `rowsFor` convierte píxeles en filas de la rejilla.
+ */
+export function createHeightTracker(rowsFor: (px: number) => number, now: () => number = () => performance.now()) {
+  const rows = new Map<string, number>();
+  const history = new Map<string, number[]>();
+  const locked = new Map<string, number>();
+  let base: number | undefined;
+  return {
+    /** Filas que debe tener el bloque tras medir `px`, o null si no cambia nada. */
+    measure(id: string, px: number): number | null {
+      let next = rowsFor(px);
+      const lock = locked.get(id);
+      if (lock !== undefined) {
+        if (next <= lock) return rows.get(id) === lock ? null : (rows.set(id, lock), lock);
+        locked.set(id, next);
+      }
+      const before = rows.get(id);
+      if (before === next) return null;
+      const t = now();
+      const recent = [...(history.get(id) ?? []).filter((at) => t - at < LOOP_WINDOW_MS), t];
+      history.set(id, recent);
+      if (lock === undefined && before !== undefined && recent.length >= LOOP_CHANGES) {
+        next = Math.max(next, before);
+        locked.set(id, next);
+      }
+      rows.set(id, next);
+      return before === next ? null : next;
+    },
+    /** El ancho ha cambiado de verdad: los altos pueden ser otros, se quitan los seguros. */
+    reset() {
+      locked.clear();
+      history.clear();
+    },
+    /**
+     * Ancho del panel. Solo un cambio de más de `WIDTH_SLACK` px (cambiar el tamaño de la ventana)
+     * quita los seguros: los ±15 px de una barra de desplazamiento que va y viene son parte del bucle.
+     */
+    setWidth(w: number) {
+      if (base === undefined || Math.abs(w - base) > WIDTH_SLACK) {
+        base = w;
+        locked.clear();
+        history.clear();
+      }
+    },
+    isLocked: (id: string) => locked.has(id),
+  };
+}

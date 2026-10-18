@@ -44,6 +44,11 @@ export interface Backend {
   fileUrl(path: string): Promise<string>;
   /** Borra adjuntos (los que no existan se ignoran). */
   removeFiles(paths: string[]): Promise<void>;
+  /**
+   * Busca productos en Open Food Facts por nombre. Con Supabase pasa por la Edge Function
+   * «food-search» (el buscador no admite peticiones desde el navegador). Lanza un Error legible.
+   */
+  searchFoods(query: string): Promise<Record<string, unknown>[]>;
   /** Asistente de IA. Solo existe con Supabase (necesita la Edge Function). Lanza AssistantError. */
   assistant?(request: AssistantRequest): Promise<AssistantResponse>;
 }

@@ -537,6 +537,55 @@ await db.query(`delete from public.projects where id = $1`, [web.id]);
 await db.query(`delete from public.tasks where id = $1`, [legacyTask.id]);
 ok((await one(`select count(*)::int n from public.task_items`)).n === 0, 'borrar una tarea (o su proyecto) borra su ficha');
 
+// ---------------------------------------------------------------- 010: cuerpo y nutrición
+
+await db.query(`insert into public.health_logs (date, sleep_hours, weight) values (current_date - 1, 7, 80.4)`);
+await asAdmin();
+await db.exec(migration('010_nutricion.sql'));
+ok(true, '010_nutricion.sql se ejecuta sin errores sobre una base con datos');
+
+await as(A);
+const oldHealth = await one(`select weight, water_ml, steps from public.health_logs where date = current_date - 1`);
+ok(Number(oldHealth.weight) === 80.4 && oldHealth.water_ml === null && oldHealth.steps === null, 'los registros de salud que ya existían se conservan, sin agua ni pasos');
+await db.query(`update public.health_logs set water_ml = 1750, steps = 9500, active_kcal = 420 where date = current_date - 1`);
+ok((await one(`select steps from public.health_logs where date = current_date - 1`)).steps === 9500, 'el registro diario guarda agua, pasos y kcal quemadas');
+ok(!!(await fails(`update public.health_logs set steps = -1`)), 'los pasos no pueden ser negativos');
+
+const g = await one(`insert into public.nutrition_goals (weight_target) values (75) returning kcal, protein_g, water_ml, steps`);
+ok(g.kcal === 2000 && g.protein_g === 120 && g.water_ml === 2000 && g.steps === 8000, 'objetivos con valores por defecto razonables');
+ok(!!(await fails(`insert into public.nutrition_goals (kcal) values (2500)`)), 'un solo juego de objetivos por usuario');
+ok(!!(await fails(`update public.nutrition_goals set kcal = 100`)), 'kcal objetivo fuera de rango rechazado');
+
+const yog = await one(
+  `insert into public.foods (name, brand, barcode, source, kcal, protein, carbs, fat, serving_g, price, price_grams)
+   values ('Yogur griego', 'Hacendado', '8480000123456', 'off', 97, 9, 4, 5, 125, 1.35, 500) returning id`,
+);
+ok(!!yog.id, 'un alimento guarda macros por 100 g, ración y precio');
+ok(!!(await fails(`insert into public.foods (name, barcode) values ('Duplicado', '8480000123456')`)), 'el mismo código de barras no se repite en el catálogo');
+ok(!!(await fails(`insert into public.foods (name, protein) values ('Imposible', 150)`)), 'más de 100 g de proteína por 100 g rechazado');
+ok(!!(await fails(`insert into public.foods (name, barcode) values ('Raro', 'abc')`)), 'un código de barras son solo dígitos');
+ok(!!(await fails(`insert into public.foods (name, image_url) values ('Img', 'http://x.com/a.jpg')`)), 'las imágenes, solo por https');
+
+await db.query(
+  `insert into public.food_logs (meal, food_id, name, grams, kcal, protein, carbs, fat, cost) values ('desayuno', $1, 'Yogur griego', 125, 121.3, 11.3, 5, 6.3, 0.34)`,
+  [yog.id],
+);
+ok(!!(await fails(`insert into public.food_logs (meal, name, grams) values ('brunch', 'X', 10)`)), 'la comida es desayuno, comida, merienda, cena u otros');
+ok(!!(await fails(`insert into public.food_logs (name, grams) values ('X', 0)`)), 'hay que apuntar algún gramo');
+await db.query(`delete from public.foods where id = $1`, [yog.id]);
+const eaten = await one(`select food_id, name, kcal from public.food_logs`);
+ok(eaten.food_id === null && eaten.name === 'Yogur griego' && Number(eaten.kcal) === 121.3, 'borrar un alimento no borra lo que ya comiste');
+
+await as(B);
+ok((await one(`select count(*)::int n from public.food_logs`)).n === 0 && (await one(`select count(*)::int n from public.nutrition_goals`)).n === 0, 'B no ve el diario ni los objetivos de A');
+const yogB = await one(`insert into public.foods (name, barcode) values ('Yogur de B', '8480000123456') returning id`);
+ok(!!yogB.id, 'otro usuario puede tener el mismo producto en su catálogo');
+await db.exec(`reset role; set role anon;`);
+ok(!!(await fails(`select * from public.foods`)), 'sin sesión no se ven los alimentos');
+await as(A);
+await db.query(`delete from public.food_logs`);
+await db.query(`delete from public.health_logs`);
+
 // ---------------------------------------------------------------- Seguridad general (resto de tablas)
 
 const pA = await one(`insert into public.projects (name) values ('Proyecto de A') returning id, user_id`);
